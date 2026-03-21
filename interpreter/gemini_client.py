@@ -125,7 +125,8 @@ Respond ONLY with valid JSON, no markdown, no explanation:
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.1,
-                max_output_tokens=1024,
+                max_output_tokens=2048,
+                response_mime_type="application/json",
             ),
         )
         return _parse_json_response(response.text, fallback)
@@ -178,7 +179,11 @@ Respond ONLY with valid JSON:
             client.models.generate_content,
             model=MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=512),
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=1024,
+                response_mime_type="application/json",
+            ),
         )
         return _parse_json_response(response.text, fallback)
     except Exception as e:
