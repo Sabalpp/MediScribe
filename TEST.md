@@ -1,8 +1,28 @@
 # Testing Guide — MediScribe Real-Time Talk
 
-## Quick Start
+## Architecture Overview
 
-You need **two terminals** open, both inside the `HOOHACKS` folder.
+```
+DOCTOR → PATIENT (Mode 1: Simplify + Translate)
+  Doctor speaks English
+  → 11 Labs STT (if mic)
+  → Gemini: simplify jargon to 5th-grade level + translate to patient's language
+  → 11 Labs TTS: speak translated text to patient
+  → Frontend: shows original → simplified → translated + audio
+
+PATIENT → DOCTOR (Mode 2: Translate + Grammar Recovery)
+  Patient speaks their language
+  → 11 Labs STT (transcribe in source language)
+  → Gemini: translate to English + fix grammar → professional medical English
+  → Frontend: shows original → fixed English + medical flags
+```
+
+The mic uses a **12-second auto-buffer** — press once to start, audio is automatically
+sent every 12 seconds. No manual stopping between sentences.
+
+---
+
+## Quick Start
 
 ### Terminal 1 — Backend
 
@@ -27,165 +47,158 @@ You should see: `Local: http://localhost:5173/`
 
 ## Test 1: Health Check
 
-Open your browser and go to:
-
 ```
 http://localhost:8000/api/health/
 ```
 
-You should see:
-
-```json
-{"status": "ok", "service": "VoiceBridge API"}
-```
-
-If you see this, the backend is alive.
+Expected: `{"status": "ok", "service": "VoiceBridge API"}`
 
 ---
 
-## Test 2: Open the App
+## Test 2: Open Real-Time Talk
 
-1. Open **http://localhost:5173/** in Chrome
-2. Click **Login** (or go straight to `/dashboard`)
-3. In the sidebar, click **Real-Time Talk**
-
-You should see a dark page with a language dropdown and a "Start Session" button.
-
----
-
-## Test 3: Start a Session
-
-1. Pick a patient language (default is Spanish)
-2. Click **Start Session**
-3. The status should change from "Offline" to "Connected" then "Ready"
-
-If it shows "Ready", the WebSocket connection to the backend is working.
+1. Open **http://localhost:5173/dashboard/talk** in Chrome
+2. Pick a patient language (Spanish, Hindi, Nepali, etc.)
+3. Click **Start Session**
+4. Status should show "Ready"
 
 ---
 
-## Test 4: Doctor Types a Message
+## Test 3: Doctor Types a Complex Message (Mode 1)
 
-1. With a session active, type in the text box at the bottom:
+This tests the **jargon simplification pipeline**.
+
+1. In the text box, type:
    ```
-   How long have you had this chest pain?
+   You have acute pleuritic chest pain consistent with pericarditis. We need to do an echocardiogram and start you on NSAIDs.
    ```
-2. Press Enter or click Send
-3. You should see:
-   - Status flashes "Translating..."
-   - A green doctor bubble appears with:
-     - Original English text
-     - Spanish translation (e.g. "¿Desde cuándo tiene este dolor en el pecho?")
-     - An audio player that auto-plays the translated speech
+2. Press Enter
 
-This tests: **Gemini translation + ElevenLabs TTS**
+**What you should see:**
 
----
+- A green doctor bubble with:
+  - **Original**: the full medical jargon
+  - **Simplified** (green box): "You have chest pain that feels sharp... swelling around your heart... special picture test..."
+  - **Translated**: Spanish (or whichever language) version
+  - **Audio player**: auto-plays the translated speech
+- In the **sidebar**: follow-up suggestions like "Is this serious?"
 
-## Test 5: Patient Speaks Into Mic
-
-1. Click the **Patient Mic** button (blue)
-2. Allow microphone access when Chrome asks
-3. Speak something in the patient language (e.g. Spanish): "Me duele el pecho cuando respiro"
-4. Click **Stop Patient Mic**
-5. You should see:
-   - Status flashes "Transcribing..." then "Translating..."
-   - A blue patient bubble appears with:
-     - Original text in the patient's language
-     - English translation
-     - Medical flags (urgency level, symptoms, ICD-10 codes, suggested questions)
-
-This tests: **ElevenLabs STT + Gemini translation + medical enrichment**
+This proves Gemini Mode 1 is working — it simplified "pericarditis" to "swelling around your heart" and "echocardiogram" to "special picture test."
 
 ---
 
-## Test 6: Doctor Speaks Into Mic
+## Test 4: Patient Speaks Into Mic (Mode 2)
 
-1. Click the **Doctor Mic** button (green)
-2. Speak in English: "I need to run some tests on your heart"
-3. Click **Stop Doctor Mic**
-4. You should see:
-   - Status flashes "Transcribing..." then "Translating..."
-   - A green doctor bubble with English original + Spanish translation
-   - Audio player auto-plays the translated speech
+This tests the **grammar recovery pipeline**.
 
-This tests: **ElevenLabs STT (English) + Gemini translation + ElevenLabs TTS**
+1. Click **🎤 Patient Mic** to start continuous recording
+2. Speak in the patient's language (e.g. Spanish: "Me duele mucho el pecho cuando respiro, y siento que mi corazón late muy rápido")
+3. Wait 12 seconds for auto-send, OR click **⏹ Stop Patient** to send immediately
+4. Watch the processing steps: "Listening..." → "Processing..."
+
+**What you should see:**
+
+- A blue patient bubble with:
+  - **Original**: text in patient's language
+  - **Raw English** (struck through): the imperfect direct translation
+  - **Fixed English** (white, bold): professional medical English (e.g. "The patient reports significant chest pain on respiration with associated palpitations")
+  - **Medical flags**: urgency level, symptoms, suggested follow-up questions
+
+This proves Mode 2 is working — it translated AND restructured the grammar.
+
+---
+
+## Test 5: Doctor Speaks Into Mic (Mode 1 via audio)
+
+1. Click **🩺 Doctor Mic**
+2. Speak in English: "I need to run some blood tests and check your heart rhythm"
+3. Wait 12 seconds or stop
+4. The audio gets: STT → Mode 1 simplify → translate → TTS
+
+Same output as Test 3, but starting from audio instead of text.
+
+---
+
+## Test 6: Follow-Up Suggestions
+
+As the conversation progresses:
+- **Right sidebar** fills with suggestions
+- "Patient could ask" — questions Gemini suggests for the patient
+- "Doctor follow-ups" — clickable questions that auto-send when clicked
+
+Click a doctor follow-up to test the one-click send.
 
 ---
 
 ## Test 7: End Session
 
-1. Click **End Session** (red button)
-2. Status should show "Disconnected"
-3. The message history stays visible
+Click **End Session**. The message history stays visible.
 
 ---
 
-## What Each Service Does
+## How the 12-Second Buffer Works
 
-| Service | What it does | When it runs |
-|---------|-------------|--------------|
-| **ElevenLabs STT** | Converts mic audio → text | When patient or doctor presses mic |
-| **Gemini** | Translates text + extracts medical info | Every message |
-| **ElevenLabs TTS** | Converts translated text → audio | When doctor sends a message |
+When you press a mic button:
+1. Recording starts immediately (red indicator in header)
+2. Every 12 seconds, the recorded chunk is sent to the backend
+3. Backend processes it: STT → Gemini → (TTS if doctor)
+4. Result appears as a message bubble
+5. Recording continues until you press Stop
+
+This is the "demo sweet spot" — long enough for coherent sentences, short enough
+to feel real-time. No excess API calls.
+
+---
+
+## What Each API Call Costs
+
+| Action | API Calls | Services Used |
+|--------|-----------|---------------|
+| Doctor types a message | 2 | Gemini (simplify+translate) + 11 Labs TTS |
+| Doctor mic (12s chunk) | 3 | 11 Labs STT + Gemini + 11 Labs TTS |
+| Patient mic (12s chunk) | 2 | 11 Labs STT + Gemini (translate+fix) |
+
+A typical 3-minute demo = ~10-15 exchanges = ~25-40 API calls total.
 
 ---
 
 ## Troubleshooting
 
-### "Failed: fetch" or "Disconnected" immediately
-- Make sure the backend is running on port 8000
-- Check the backend terminal for errors
+### Status stuck on "Connecting..."
+- Backend must be running on port 8000
+- Check backend terminal for errors
 
 ### "Mic error: NotAllowedError"
-- Use Chrome (not Safari)
-- Allow microphone access when prompted
-- Make sure you're on `localhost` (not `127.0.0.1`)
+- Use Chrome, not Safari
+- Must be on `localhost` (not `127.0.0.1`)
 
-### No translation appears / status stuck on "Translating..."
-- Check the backend terminal for API errors
-- Make sure `.env` has valid `GEMINI_API_KEY` and `ELEVENLABS_API_KEY`
+### No "Simplified" text appears
+- Check that `GEMINI_API_KEY` is set in `.env`
+- Without it, you get mock responses
 
 ### Audio doesn't play
-- Check Chrome isn't blocking autoplay (click the speaker icon in the address bar)
-- Make sure ElevenLabs API key is valid
+- Chrome may block autoplay — click the speaker icon in address bar
+- Check `ELEVENLABS_API_KEY` is set
 
-### "Address already in use" when starting backend
-- Run: `lsof -ti:8000 | xargs kill -9`
-- Then restart the backend
-
----
-
-## API Keys Needed
-
-The `.env` file must have these set:
-
-| Key | Service | Get it from |
-|-----|---------|-------------|
-| `GEMINI_API_KEY` | Google Gemini (translation) | https://aistudio.google.com/apikey |
-| `ELEVENLABS_API_KEY` | ElevenLabs (speech) | https://elevenlabs.io/app/settings/api-keys |
-
-Without these keys, the app returns mock/placeholder responses.
+### "Address already in use"
+```bash
+lsof -ti:8000 | xargs kill -9
+```
 
 ---
 
-## Command-Line Quick Test (No Browser Needed)
-
-If you just want to verify the backend pipeline works without opening the frontend:
+## Command-Line Quick Test
 
 ```bash
 source .venv/bin/activate
 
-# Create a session
+# Health check
+curl -s http://localhost:8000/api/health/ | python -m json.tool
+
+# Create session
 curl -s -X POST http://localhost:8000/api/sessions/ \
   -H "Content-Type: application/json" \
   -d '{"provider_id":"test","patient_language":"es"}' | python -m json.tool
-
-# Check health
-curl -s http://localhost:8000/api/health/ | python -m json.tool
 ```
 
-For a full WebSocket test (needs `websockets` pip package):
-
-```bash
-python test_ws.py
-```
+For a WebSocket test: `python test_ws.py`

@@ -1,10 +1,15 @@
 """
 gemini_client.py
 
-All Gemini API interactions via the current google-genai SDK.
-- translate_patient_utterance: text → {original, translated, medical_flags}
-- translate_provider_utterance: English text → patient language text
-- generate_session_summary: full transcript → structured medical summary
+Two-mode Gemini pipeline matching the team architecture:
+
+Mode 1 — Doctor→Patient (Simplification & Tone):
+  English medical jargon → simplified 5th-grade English → translated to patient language
+
+Mode 2 — Patient→Doctor (Grammar Recovery & Structuring):
+  Raw patient speech (any language) → translated to English → grammar-fixed professional English
+
+Gemini is the Orchestrator. 11 Labs handles STT/TTS only.
 """
 
 import os
@@ -18,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-# Lazy client — instantiated on first use
 _client = None
 
 def get_client():
@@ -35,9 +39,29 @@ LANG_NAMES = {
     "pt": "Portuguese",
     "ar": "Arabic",
     "hi": "Hindi",
+    "ne": "Nepali",
 }
 
 MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+SYSTEM_PROMPT = """Role: You are a specialized Medical Translation and Logic Engine. Your goal is to facilitate clear, professional communication between a Doctor (English speaker) and a Patient (Non-English speaker or broken english).
+
+Operational Modes:
+
+1. Mode: Doctor-to-Patient (Simplification & Tone)
+Input: Technical medical jargon or clinical instructions in English.
+Action: Simplify the language to a 5th-grade reading level. Remove complex medical terminology while retaining the exact meaning of the diagnosis or instruction.
+Output: A concise, empathetic English string ready for translation.
+
+2. Mode: Patient-to-Doctor (Grammar Recovery & Structuring)
+Input: Raw, potentially "funky" or grammatically broken English (translated from the patient's language).
+Action: Restructure the sentence for medical clarity. Fix syntax errors and clarify intent (e.g., changing "my head do big hurt" to "the patient is experiencing a severe migraine").
+Output: A professional, structured English string for the doctor's records.
+
+Constraints:
+- No Hallucinations: Do not add medical advice not present in the input.
+- Brevity: Keep outputs under 3 sentences to minimize processing time.
+- Transparency: If an input is too garbled to fix, output: "[CLARIFICATION NEEDED]"."""
 
 
 def _parse_json_response(raw: str, fallback: dict) -> dict:
@@ -56,127 +80,56 @@ def _parse_json_response(raw: str, fallback: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Patient → Provider
+# Mode 1: Doctor → Patient (Simplify + Translate)
 # ---------------------------------------------------------------------------
 
-async def translate_patient_utterance(text: str, patient_language: str) -> dict:
+async def process_doctor_to_patient(english_text: str, patient_language: str) -> dict:
     """
-    Translates patient speech to English and extracts medical flags.
+    Doctor spoke English. Pipeline:
+    1. Gemini simplifies medical jargon to 5th-grade level
+    2. Gemini translates simplified English → patient's language
+    3. Returns both for display + TTS
 
     Returns:
     {
-        "original": "Me duele el pecho cuando respiro",
-        "translated": "My chest hurts when I breathe",
-        "medical_flags": {
-            "symptoms": ["chest pain", "pain on breathing"],
-            "urgency": "high",
-            "body_parts": ["chest"],
-            "medications": [],
-            "suggested_questions": ["How long has this been happening?"]
-        }
+        "original": "You have acute pleuritic chest pain consistent with pericarditis",
+        "simplified": "You have a sharp pain in your chest when you breathe. This is because the lining around your heart is swollen.",
+        "translated": "<same in patient's language>",
+        "follow_up_suggestions": ["Ask: What medicine will help?", "Ask: Is this serious?"]
     }
     """
     lang_name = LANG_NAMES.get(patient_language, patient_language)
     client = get_client()
 
-    prompt = f"""You are an expert real-time medical interpreter with clinical knowledge.
+    prompt = f"""MODE: Doctor-to-Patient
 
-The patient is speaking {lang_name}. Their utterance is:
-"{text}"
+The doctor said (in English):
+"{english_text}"
+
+The patient speaks {lang_name}.
 
 Tasks:
-1. Clean up any transcription artifacts in the original
-2. Translate accurately to English, preserving medical meaning
-3. Extract medical flags to assist the doctor
-4. Map symptoms to standardized medical terms and suggest ICD-10 codes
-5. Check for any drug interaction risks if medications are mentioned
-
-Respond ONLY with valid JSON, no markdown, no explanation:
-{{
-  "original": "<cleaned original in {lang_name}>",
-  "translated": "<accurate English translation>",
-  "medical_flags": {{
-    "symptoms": ["<symptoms mentioned>"],
-    "urgency": "<low|medium|high>",
-    "body_parts": ["<body parts mentioned>"],
-    "medications": ["<medications mentioned>"],
-    "suggested_questions": ["<1-2 follow-up questions for the doctor>"],
-    "standardized_terms": ["<standardized medical terms, e.g. 'pleuritic chest pain'>"],
-    "icd_suggestions": ["<ICD-10 codes like R07.1 - Chest pain on breathing>"],
-    "drug_interactions": ["<any flagged interactions, empty if none>"]
-  }}
-}}"""
-
-    fallback = {
-        "original": text,
-        "translated": f"(mock) {text}",
-        "medical_flags": {
-            "symptoms": ["unspecified symptom"],
-            "urgency": "medium",
-            "body_parts": [],
-            "medications": [],
-            "suggested_questions": ["Can you describe the pain?", "When did it start?"],
-        },
-    }
-
-    if not GEMINI_API_KEY:
-        logger.warning("GEMINI_API_KEY not set — returning mock patient translation")
-        return fallback
-
-    try:
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.1,
-                max_output_tokens=2048,
-                response_mime_type="application/json",
-            ),
-        )
-        return _parse_json_response(response.text, fallback)
-    except Exception as e:
-        logger.error(f"Gemini patient translation error: {e}")
-        return fallback
-
-
-# ---------------------------------------------------------------------------
-# Provider → Patient
-# ---------------------------------------------------------------------------
-
-async def translate_provider_utterance(text: str, patient_language: str) -> dict:
-    """
-    Translates provider's English into the patient's language.
-    Uses plain, warm language appropriate for a patient.
-
-    Returns:
-    {
-        "original": "How long have you had this pain?",
-        "translated": "¿Cuánto tiempo lleva con este dolor?"
-    }
-    """
-    lang_name = LANG_NAMES.get(patient_language, patient_language)
-    client = get_client()
-
-    prompt = f"""You are a medical interpreter translating from English to {lang_name}.
-
-The doctor said: "{text}"
-
-Translate using:
-- Clear, plain language a patient can understand (no jargon)
-- Warm, reassuring tone
-- Exact clinical meaning — do not add or remove content
+1. Simplify the doctor's words to a 5th-grade reading level. Remove jargon but keep exact medical meaning.
+2. Translate the simplified version into {lang_name} using warm, reassuring tone.
+3. Suggest 1-2 follow-up questions the patient could ask for clarification.
 
 Respond ONLY with valid JSON:
 {{
-  "original": "{text}",
-  "translated": "<translation in {lang_name}>"
+  "original": "{english_text}",
+  "simplified": "<simplified English, max 3 sentences>",
+  "translated": "<translation in {lang_name}, max 3 sentences>",
+  "follow_up_suggestions": ["<question patient could ask>", "<question patient could ask>"]
 }}"""
 
-    fallback = {"original": text, "translated": f"(mock) {text}"}
+    fallback = {
+        "original": english_text,
+        "simplified": english_text,
+        "translated": f"(mock translation) {english_text}",
+        "follow_up_suggestions": ["Can you explain that in simpler words?"],
+    }
 
     if not GEMINI_API_KEY:
-        logger.warning("GEMINI_API_KEY not set — returning mock provider translation")
+        logger.warning("GEMINI_API_KEY not set — returning mock")
         return fallback
 
     try:
@@ -185,6 +138,7 @@ Respond ONLY with valid JSON:
             model=MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
                 temperature=0.1,
                 max_output_tokens=1024,
                 response_mime_type="application/json",
@@ -192,7 +146,91 @@ Respond ONLY with valid JSON:
         )
         return _parse_json_response(response.text, fallback)
     except Exception as e:
-        logger.error(f"Gemini provider translation error: {e}")
+        logger.error(f"Gemini doctor→patient error: {e}")
+        return fallback
+
+
+# ---------------------------------------------------------------------------
+# Mode 2: Patient → Doctor (Translate + Grammar Fix)
+# ---------------------------------------------------------------------------
+
+async def process_patient_to_doctor(patient_text: str, patient_language: str) -> dict:
+    """
+    Patient spoke in their language (transcribed by 11 Labs STT).
+    Pipeline:
+    1. Gemini translates raw patient text → English
+    2. Gemini applies Grammar Recovery: fixes broken/funky translation into
+       professional medical English for the doctor
+    3. Extracts medical flags
+
+    Returns:
+    {
+        "original": "मेरी छाती में बहुत दर्द है जब मैं सांस लेता हूं",
+        "raw_english": "my chest do big hurt when i breathing",
+        "fixed_english": "The patient is experiencing significant chest pain on inspiration.",
+        "medical_flags": {
+            "symptoms": ["chest pain on breathing"],
+            "urgency": "high",
+            "suggested_questions": ["How long has this been happening?"]
+        }
+    }
+    """
+    lang_name = LANG_NAMES.get(patient_language, patient_language)
+    client = get_client()
+
+    prompt = f"""MODE: Patient-to-Doctor
+
+The patient spoke in {lang_name}. Their transcribed speech is:
+"{patient_text}"
+
+Tasks:
+1. Translate the patient's words into English (this may produce imperfect English — that's expected).
+2. Apply Grammar Recovery: restructure into clear, professional medical English for the doctor's records. Fix syntax, clarify intent.
+3. Extract medical flags from the content.
+4. If the input is too garbled to understand, set fixed_english to "[CLARIFICATION NEEDED]".
+
+Respond ONLY with valid JSON:
+{{
+  "original": "<cleaned original in {lang_name}>",
+  "raw_english": "<direct English translation, may be imperfect>",
+  "fixed_english": "<professional, restructured English, max 3 sentences>",
+  "medical_flags": {{
+    "symptoms": ["<symptoms mentioned>"],
+    "urgency": "<low|medium|high>",
+    "suggested_questions": ["<1-2 follow-up questions for the doctor>"]
+  }}
+}}"""
+
+    fallback = {
+        "original": patient_text,
+        "raw_english": f"(direct) {patient_text}",
+        "fixed_english": f"(mock) {patient_text}",
+        "medical_flags": {
+            "symptoms": [],
+            "urgency": "medium",
+            "suggested_questions": ["Can you describe the pain?", "When did it start?"],
+        },
+    }
+
+    if not GEMINI_API_KEY:
+        logger.warning("GEMINI_API_KEY not set — returning mock")
+        return fallback
+
+    try:
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=0.1,
+                max_output_tokens=1024,
+                response_mime_type="application/json",
+            ),
+        )
+        return _parse_json_response(response.text, fallback)
+    except Exception as e:
+        logger.error(f"Gemini patient→doctor error: {e}")
         return fallback
 
 
@@ -202,10 +240,7 @@ Respond ONLY with valid JSON:
 
 async def generate_session_summary(messages: list[dict], patient_language: str) -> str:
     """
-    Takes the full transcript and generates a structured clinical summary.
-
-    messages: [{"direction": ..., "original": ..., "translated": ...}, ...]
-    Returns plain-text summary string.
+    Full transcript → structured clinical summary.
     """
     if not messages:
         return "No messages recorded in this session."
@@ -216,11 +251,11 @@ async def generate_session_summary(messages: list[dict], patient_language: str) 
     lines = []
     for m in messages:
         if m["direction"] == "patient_to_provider":
-            lines.append(f"PATIENT ({lang_name}): {m['original']}")
-            lines.append(f"  → English: {m['translated']}")
+            lines.append(f"PATIENT ({lang_name}): {m.get('original', '')}")
+            lines.append(f"  → Doctor sees: {m.get('fixed_english', m.get('translated', ''))}")
         else:
-            lines.append(f"DOCTOR: {m['original']}")
-            lines.append(f"  → {lang_name}: {m['translated']}")
+            lines.append(f"DOCTOR: {m.get('original', '')}")
+            lines.append(f"  → Patient hears ({lang_name}): {m.get('translated', '')}")
 
     transcript = "\n".join(lines)
 
@@ -230,7 +265,7 @@ Full transcript of a medical encounter (patient: {lang_name}, provider: English)
 
 {transcript}
 
-Generate a structured clinical summary with these sections:
+Generate a structured clinical summary:
 1. Chief Complaint
 2. Reported Symptoms (with duration and severity if mentioned)
 3. Relevant History (medications, allergies, prior conditions if mentioned)
@@ -238,8 +273,7 @@ Generate a structured clinical summary with these sections:
 5. Urgency Assessment (low/medium/high + reasoning)
 6. Recommended Follow-up Actions
 
-Be concise, clinically accurate, and use standard medical documentation style.
-Do not invent information not in the transcript."""
+Be concise, clinically accurate. Do not invent information not in the transcript."""
 
     try:
         response = await asyncio.to_thread(
