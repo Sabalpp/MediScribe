@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediScribe — Live Mic Test</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 2rem; }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .subtitle { color: #94a3b8; margin-bottom: 2rem; }
+        .controls { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin-bottom: 2rem; }
+        select, button { padding: 0.6rem 1.2rem; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; font-size: 0.95rem; cursor: pointer; }
+        button { font-weight: 600; transition: all 0.15s; }
+        button:hover { background: #334155; }
+        #recordBtn { background: #dc2626; border-color: #dc2626; color: white; }
+        #recordBtn:hover { background: #b91c1c; }
+        #recordBtn.recording { background: #16a34a; border-color: #16a34a; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+        #doctorBtn { background: #2563eb; border-color: #2563eb; color: white; }
+        #doctorBtn:hover { background: #1d4ed8; }
+        .status { padding: 0.5rem 1rem; border-radius: 6px; background: #1e293b; border: 1px solid #334155; font-size: 0.85rem; color: #94a3b8; }
+        .status.connected { border-color: #16a34a; color: #4ade80; }
+        .status.error { border-color: #dc2626; color: #f87171; }
+        .panel { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .panel h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #f8fafc; }
+        .messages { max-height: 400px; overflow-y: auto; }
+        .msg { padding: 0.75rem; border-radius: 8px; margin-bottom: 0.75rem; }
+        .msg.patient { background: #1a2744; border-left: 3px solid #3b82f6; }
+        .msg.doctor { background: #1a2e1a; border-left: 3px solid #22c55e; }
+        .msg.system { background: #2a2015; border-left: 3px solid #f59e0b; font-size: 0.85rem; }
+        .msg .label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 0.25rem; }
+        .msg .original { font-weight: 500; }
+        .msg .translated { color: #94a3b8; margin-top: 0.25rem; }
+        .msg .flags { margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .flag { background: #334155; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
+        .flag.high { background: #7f1d1d; color: #fca5a5; }
+        .flag.medium { background: #78350f; color: #fde68a; }
+        .doctor-input { display: flex; gap: 0.5rem; margin-top: 1rem; }
+        .doctor-input input { flex: 1; padding: 0.6rem; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 0.95rem; }
+        .doctor-input input::placeholder { color: #475569; }
+        audio { margin-top: 0.5rem; width: 100%; height: 32px; }
+    </style>
+</head>
+<body>
+    <h1>MediScribe — Live Mic Test</h1>
+    <p class="subtitle">Test real-time patient → doctor translation with your microphone</p>
+
+    <div class="controls">
+        <select id="langSelect">
+            <option value="es">Spanish (Patient speaks Spanish)</option>
+            <option value="zh">Mandarin Chinese</option>
+            <option value="vi">Vietnamese</option>
+            <option value="fr">French</option>
+            <option value="pt">Portuguese</option>
+            <option value="ar">Arabic</option>
+            <option value="hi">Hindi</option>
+        </select>
+        <button id="recordBtn" onclick="toggleRecording()">Start Recording (Patient Mic)</button>
+        <span id="statusBadge" class="status">Disconnected</span>
+    </div>
+
+    <div class="panel">
+        <h2>Conversation</h2>
+        <div id="messages" class="messages"></div>
+        <div class="doctor-input">
+            <input type="text" id="doctorInput" placeholder="Type doctor's response in English..." onkeydown="if(event.key==='Enter')sendDoctorText()">
+            <button id="doctorBtn" onclick="sendDoctorText()">Send as Doctor</button>
+        </div>
+    </div>
+
+    <div class="panel" style="font-size: 0.85rem; color: #94a3b8;">
+        <h2>How to use</h2>
+        <ol style="padding-left: 1.2rem; line-height: 1.8;">
+            <li>Make sure the backend is running: <code>python manage.py runserver 8000</code></li>
+            <li>Open this file in your browser (just double-click it or drag into Chrome)</li>
+            <li>Pick the patient's language from the dropdown</li>
+            <li>Click <strong>"Start Recording"</strong> and speak as the patient (in their language)</li>
+            <li>Click <strong>"Stop Recording"</strong> when done — the audio gets sent to the backend</li>
+            <li>Watch the translation + medical flags appear</li>
+            <li>Type a doctor response in the text box and hit Enter — it gets translated + spoken back</li>
+        </ol>
+    </div>
+
+<script>
+const API = 'http://localhost:8000';
+const WS_BASE = 'ws://localhost:8000';
+
+let ws = null;
+let sessionId = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+
+async function init() {
+    try {
+        const resp = await fetch(`${API}/api/sessions/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                provider_id: 'mic_test',
+                patient_language: document.getElementById('langSelect').value
+            })
+        });
+        const data = await resp.json();
+        sessionId = data.id;
+        addMessage('system', `Session created: ${sessionId}`);
+        connectWebSocket();
+    } catch (e) {
+        setStatus('error', `Backend not running: ${e.message}`);
+    }
+}
+
+function connectWebSocket() {
+    ws = new WebSocket(`${WS_BASE}/ws/session/${sessionId}/`);
+
+    ws.onopen = () => setStatus('connected', 'Connected');
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'connection_established') {
+            addMessage('system', 'WebSocket connected — ready to interpret');
+        } else if (data.type === 'transcribing') {
+            addMessage('system', 'Transcribing patient audio...');
+        } else if (data.type === 'translating') {
+            addMessage('system', 'Translating...');
+        } else if (data.type === 'patient_message') {
+            const el = addMessage('patient', '', true);
+            el.innerHTML = `
+                <div class="label">Patient (${data.patient_language})</div>
+                <div class="original">${data.original}</div>
+                <div class="translated">→ ${data.translated}</div>
+                ${renderFlags(data.medical_flags)}
+            `;
+        } else if (data.type === 'provider_message') {
+            const el = addMessage('doctor', '', true);
+            let audioHtml = '';
+            if (data.audio_base64) {
+                audioHtml = `<audio controls autoplay src="data:audio/mpeg;base64,${data.audio_base64}"></audio>`;
+            }
+            el.innerHTML = `
+                <div class="label">Doctor → Patient</div>
+                <div class="original">${data.original}</div>
+                <div class="translated">→ ${data.translated}</div>
+                ${audioHtml}
+            `;
+        } else if (data.type === 'error') {
+            addMessage('system', `Error: ${data.message}`);
+        }
+    };
+
+    ws.onclose = () => setStatus('error', 'Disconnected');
+    ws.onerror = () => setStatus('error', 'WebSocket error');
+}
+
+function renderFlags(flags) {
+    if (!flags || Object.keys(flags).length === 0) return '';
+    let html = '<div class="flags">';
+    if (flags.urgency) {
+        html += `<span class="flag ${flags.urgency}">${flags.urgency} urgency</span>`;
+    }
+    (flags.symptoms || []).forEach(s => { html += `<span class="flag">${s}</span>`; });
+    (flags.body_parts || []).forEach(b => { html += `<span class="flag">${b}</span>`; });
+    (flags.suggested_questions || []).forEach(q => { html += `<span class="flag" style="font-style:italic">💬 ${q}</span>`; });
+    html += '</div>';
+    return html;
+}
+
+async function toggleRecording() {
+    const btn = document.getElementById('recordBtn');
+    if (!isRecording) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            await init();
+            await new Promise(r => setTimeout(r, 1000));
+        }
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+            audioChunks = [];
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                sendAudio(blob);
+                stream.getTracks().forEach(t => t.stop());
+            };
+            mediaRecorder.start();
+            isRecording = true;
+            btn.textContent = 'Stop Recording';
+            btn.classList.add('recording');
+        } catch (e) {
+            addMessage('system', `Mic error: ${e.message}. Allow microphone access.`);
+        }
+    } else {
+        mediaRecorder.stop();
+        isRecording = false;
+        btn.textContent = 'Start Recording (Patient Mic)';
+        btn.classList.remove('recording');
+    }
+}
+
+function sendAudio(blob) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        addMessage('system', 'Not connected — click record to reconnect');
+        return;
+    }
+    const lang = document.getElementById('langSelect').value;
+    ws.send(JSON.stringify({
+        type: 'audio_metadata',
+        direction: 'patient_to_provider',
+        patient_language: lang
+    }));
+    ws.send(blob);
+    addMessage('system', `Sent ${(blob.size / 1024).toFixed(1)}KB of audio`);
+}
+
+function sendDoctorText() {
+    const input = document.getElementById('doctorInput');
+    const text = input.value.trim();
+    if (!text) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        addMessage('system', 'Not connected — record first to start a session');
+        return;
+    }
+    const lang = document.getElementById('langSelect').value;
+    ws.send(JSON.stringify({
+        type: 'provider_text',
+        text: text,
+        patient_language: lang
+    }));
+    addMessage('system', `Doctor: "${text}" — translating...`);
+    input.value = '';
+}
+
+function addMessage(type, text, raw = false) {
+    const div = document.createElement('div');
+    div.className = `msg ${type}`;
+    if (!raw) div.textContent = text;
+    document.getElementById('messages').appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth' });
+    return div;
+}
+
+function setStatus(cls, text) {
+    const badge = document.getElementById('statusBadge');
+    badge.className = `status ${cls}`;
+    badge.textContent = text;
+}
+
+document.getElementById('langSelect').addEventListener('change', () => {
+    if (ws) { ws.close(); ws = null; sessionId = null; }
+    addMessage('system', `Language changed — next recording will start a new session`);
+});
+</script>
+</body>
+</html>
