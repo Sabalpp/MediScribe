@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import SimpleModal from '../components/SimpleModal'
+import BrandMark from '../components/BrandMark'
 import { useToast } from '../context/ToastContext'
 
 export default function LoginPage() {
@@ -16,6 +17,11 @@ export default function LoginPage() {
       showToast('Please enter your email and password.')
       return
     }
+    navigate('/dashboard')
+  }
+
+  const handleContinueAsGuest = () => {
+    showToast('Continuing as guest. Some account features are limited (demo).')
     navigate('/dashboard')
   }
 
@@ -37,8 +43,8 @@ export default function LoginPage() {
 
         <div className="relative z-10">
           <Link to="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white">
-              <span className="material-symbols-outlined font-bold text-primary">translate</span>
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white p-1.5 shadow-sm">
+              <BrandMark bare size="md" />
             </div>
             <span className="text-2xl font-black tracking-tighter text-white">MediScribe</span>
           </Link>
@@ -69,7 +75,7 @@ export default function LoginPage() {
       <div className="flex flex-1 items-center justify-center bg-surface-container p-6 md:p-12 lg:p-24">
         <div className="w-full max-w-md">
           <div className="mb-12 flex items-center gap-2 md:hidden">
-            <span className="material-symbols-outlined font-bold text-primary">translate</span>
+            <BrandMark size="sm" />
             <span className="text-xl font-black tracking-tighter text-on-surface">MediScribe</span>
           </div>
 
@@ -121,13 +127,21 @@ export default function LoginPage() {
                 />
               </div>
 
-              <div className="pt-2">
+              <div className="space-y-3 pt-2">
                 <button
                   type="submit"
                   className="clinical-gradient flex w-full items-center justify-center gap-2 rounded-lg px-6 py-4 font-bold text-white shadow-sm transition-opacity hover:opacity-90"
                 >
                   <span>Sign in</span>
                   <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleContinueAsGuest}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-outline-variant/40 bg-transparent px-6 py-3.5 text-sm font-bold text-on-surface transition-colors hover:border-primary/50 hover:bg-surface-container-low"
+                >
+                  <span className="material-symbols-outlined text-[18px] text-outline">person_outline</span>
+                  Continue as guest
                 </button>
               </div>
 

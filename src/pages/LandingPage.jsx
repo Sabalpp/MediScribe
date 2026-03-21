@@ -4,6 +4,7 @@ import Navbar from '../components/Navbar'
 import Footer from '../components/Footer'
 import PatientExperienceScrolly from '../components/PatientExperienceScrolly'
 import SimpleModal from '../components/SimpleModal'
+import BrandMark from '../components/BrandMark'
 import { useToast } from '../context/ToastContext'
 
 export default function LandingPage() {
@@ -17,9 +18,7 @@ export default function LandingPage() {
       <header className="dark-section px-8 pb-20 pt-32 md:pb-32 md:pt-48">
         <div className="mx-auto flex max-w-7xl flex-col items-center text-center">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-white/90">
-            <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-              translate
-            </span>
+            <BrandMark size="sm" variant="onDark" className="gap-0" />
             Real-Time Medical Translation
           </div>
 
@@ -85,7 +84,9 @@ export default function LandingPage() {
                 </div>
                 <div className="col-span-1 space-y-4">
                   <div className="flex h-32 items-center justify-center rounded-lg bg-primary/5">
-                    <span className="material-symbols-outlined text-4xl text-primary/20">translate</span>
+                    <div className="opacity-[0.22]">
+                      <BrandMark size="xl" className="gap-0" />
+                    </div>
                   </div>
                   <div className="h-4 w-full rounded bg-surface-container-high"></div>
                   <div className="h-4 w-2/3 rounded bg-surface-container-high"></div>

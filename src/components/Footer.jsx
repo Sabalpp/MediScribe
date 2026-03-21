@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useToast } from '../context/ToastContext'
+import BrandMark from './BrandMark'
 
 export default function Footer() {
   const { showToast } = useToast()
@@ -9,7 +10,14 @@ export default function Footer() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-20 grid grid-cols-1 gap-12 md:grid-cols-12">
           <div className="md:col-span-4">
-            <div className="mb-6 text-2xl font-black text-white">MediScribe</div>
+            <div className="mb-6">
+              <BrandMark
+                size="lg"
+                variant="onDark"
+                showWordmark
+                wordmarkClassName="text-2xl font-black text-white"
+              />
+            </div>
             <p className="mb-8 max-w-xs font-medium text-white/60">
               Understand every word your doctor says, in the language you think in.
             </p>

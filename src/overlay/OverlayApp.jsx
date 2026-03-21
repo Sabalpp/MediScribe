@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { ragQuery } from '../services/api'
+import BrandMark from '../components/BrandMark'
 
 const LANGUAGES = [
   { code: 'es', label: 'Español' },
@@ -72,10 +73,13 @@ export default function OverlayApp() {
         {/* Title bar */}
         <div className="flex items-center justify-between px-4 py-2 bg-surface-950/80 border-b border-white/10">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-semibold tracking-wide uppercase opacity-80">
-              MediScribe
-            </span>
+            <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400 animate-pulse" />
+            <BrandMark
+              size="sm"
+              showWordmark
+              wordmarkClassName="text-xs font-semibold tracking-wide uppercase text-white/90"
+              imgClassName="brightness-0 invert opacity-95"
+            />
           </div>
           <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' }}>
             <button

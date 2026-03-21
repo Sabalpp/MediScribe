@@ -1,6 +1,7 @@
 import { NavLink, useNavigate, Link } from 'react-router-dom'
 import { useDashboardSession } from '../context/DashboardSessionContext'
 import { useToast } from '../context/ToastContext'
+import BrandMark from './BrandMark'
 
 const navItems = [
   { icon: 'dashboard', label: 'My visit', to: '/dashboard', end: true },
@@ -34,8 +35,8 @@ export default function Sidebar() {
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-outline-variant/30 bg-surface-container">
       <div className="flex h-full flex-col gap-2 p-4">
         <div className="px-3 py-6">
-          <Link to="/" className="text-lg font-black tracking-tighter text-primary">
-            MediScribe
+          <Link to="/" className="flex items-center">
+            <BrandMark showWordmark wordmarkClassName="text-lg font-black tracking-tighter text-primary" />
           </Link>
         </div>
 
