@@ -23,17 +23,17 @@
   --color-error-container: #ffdad6;
   --color-on-error: #ffffff;
 
-  --color-surface: #f8f9fa;
-  --color-surface-container-lowest: #ffffff;
-  --color-surface-container-low: #f3f4f5;
-  --color-surface-container: #edeeef;
-  --color-surface-container-high: #e7e8e9;
-  --color-surface-container-highest: #e1e3e4;
+  --color-surface: #eef1ef;
+  --color-surface-container-lowest: #f7f9f8;
+  --color-surface-container-low: #e3e8e5;
+  --color-surface-container: #d5dcd8;
+  --color-surface-container-high: #c5cec8;
+  --color-surface-container-highest: #b3bfb8;
 
   --color-on-surface: #191c1d;
   --color-on-surface-variant: #424752;
   --color-outline: #727783;
-  --color-outline-variant: #c2c6d4;
+  --color-outline-variant: #a3b0a8;
 
   --font-family-sans: 'Inter', 'Helvetica', sans-serif;
 }
@@ -58,6 +58,11 @@
 @layer components {
   .clinical-gradient {
     background: linear-gradient(180deg, #00478d 0%, #005eb8 100%);
+  }
+
+  .dark-section {
+    background-color: #0f1f2e;
+    color: #e8ecea;
   }
 }
 

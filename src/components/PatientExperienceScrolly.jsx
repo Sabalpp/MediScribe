@@ -67,29 +67,30 @@ export default function PatientExperienceScrolly() {
   const isComplete = charCount >= SPANISH_FULL.length
 
   return (
-    <section ref={sectionRef} className="bg-surface-container-low px-8 py-24" aria-label="Patient experience">
+    <section ref={sectionRef} className="bg-surface-container px-8 py-24" aria-label="How it works">
       <div className="mx-auto min-h-[260vh] max-w-7xl">
         <div className="sticky top-20 flex min-h-[100dvh] w-full flex-col items-center justify-center gap-10 py-6 lg:flex-row lg:items-center lg:gap-12 lg:px-4">
           <div className="w-full shrink-0 lg:max-w-md">
             <div className="mb-8 h-1 w-12 bg-secondary"></div>
-            <h2 className="mb-6 text-4xl font-black tracking-tight text-primary">Natively Human.</h2>
+            <h2 className="mb-6 text-4xl font-black tracking-tight text-primary">
+              Understand your doctor in real time.
+            </h2>
             <p className="mb-8 text-lg leading-relaxed text-on-surface-variant">
-              Patients can speak in their native tongue without the anxiety of translation errors. MediScribe captures
-              every symptom, emotion, and nuance, delivering a sense of being truly understood in moments that matter
-              most.
+              Speak naturally in your own language. MediScribe listens, translates, and shows you exactly what your
+              doctor is saying — so you never feel lost during a visit.
             </p>
             <ul className="space-y-4">
               <li className="flex items-center gap-3 font-semibold text-secondary">
                 <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
                   check_circle
                 </span>
-                100+ Dialects Supported
+                Works with 100+ languages and dialects
               </li>
               <li className="flex items-center gap-3 font-semibold text-secondary">
                 <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>
                   check_circle
                 </span>
-                Zero-Latency Audio Stream
+                Instant — no noticeable delay
               </li>
             </ul>
           </div>

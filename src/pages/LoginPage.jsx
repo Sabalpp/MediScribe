@@ -1,10 +1,21 @@
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import SimpleModal from '../components/SimpleModal'
+import { useToast } from '../context/ToastContext'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const { showToast } = useToast()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [forgotOpen, setForgotOpen] = useState(false)
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    if (!email.trim() || !password.trim()) {
+      showToast('Please enter your email and password.')
+      return
+    }
     navigate('/dashboard')
   }
 
@@ -27,7 +38,7 @@ export default function LoginPage() {
         <div className="relative z-10">
           <Link to="/" className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white">
-              <span className="material-symbols-outlined font-bold text-primary">architecture</span>
+              <span className="material-symbols-outlined font-bold text-primary">translate</span>
             </div>
             <span className="text-2xl font-black tracking-tighter text-white">MediScribe</span>
           </Link>
@@ -35,50 +46,52 @@ export default function LoginPage() {
 
         <div className="relative z-10 max-w-lg">
           <h1 className="mb-6 text-5xl font-bold leading-[1.1] tracking-tight text-white lg:text-6xl">
-            Clinical precision <br />
-            at the speed of <span className="text-secondary-container">thought.</span>
+            Never miss a word <br />
+            your doctor <span className="text-secondary-container">says.</span>
           </h1>
           <p className="text-lg font-medium leading-relaxed text-on-primary-container opacity-90">
-            The next generation of surgical intelligence. Secure, interoperable, and designed for the modern operating
-            theater.
+            Real-time translation that helps you understand your care — clearly, accurately, and in your own language.
           </p>
         </div>
 
         <div className="relative z-10 flex gap-12 border-t border-white/10 pt-8">
           <div>
-            <div className="text-2xl font-bold text-secondary-container">99.9%</div>
-            <div className="text-xs font-bold uppercase tracking-widest text-on-primary-container">Uptime Reliability</div>
+            <div className="text-2xl font-bold text-secondary-container">100+</div>
+            <div className="text-xs font-bold uppercase tracking-widest text-on-primary-container">Languages supported</div>
           </div>
           <div>
-            <div className="text-2xl font-bold text-secondary-container">HIPAA</div>
-            <div className="text-xs font-bold uppercase tracking-widest text-on-primary-container">Certified Security</div>
+            <div className="text-2xl font-bold text-secondary-container">Private</div>
+            <div className="text-xs font-bold uppercase tracking-widest text-on-primary-container">End-to-end encrypted</div>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-1 items-center justify-center bg-surface-container-low p-6 md:p-12 lg:p-24">
+      <div className="flex flex-1 items-center justify-center bg-surface-container p-6 md:p-12 lg:p-24">
         <div className="w-full max-w-md">
           <div className="mb-12 flex items-center gap-2 md:hidden">
-            <span className="material-symbols-outlined font-bold text-primary">architecture</span>
+            <span className="material-symbols-outlined font-bold text-primary">translate</span>
             <span className="text-xl font-black tracking-tighter text-on-surface">MediScribe</span>
           </div>
 
           <div className="rounded-lg bg-surface-container-lowest p-8 shadow-[0px_20px_40px_rgba(25,28,29,0.04)] lg:p-10">
             <div className="mb-10">
-              <h2 className="mb-2 text-2xl font-bold tracking-tight text-on-surface">Sign in to your account</h2>
-              <p className="text-sm text-on-surface-variant">Enter your credentials to access the platform.</p>
+              <h2 className="mb-2 text-2xl font-bold tracking-tight text-on-surface">Sign in to your visit</h2>
+              <p className="text-sm text-on-surface-variant">Enter your details to access your care dashboard.</p>
             </div>
 
             <form className="space-y-6" onSubmit={handleSubmit}>
               <div className="space-y-1.5">
                 <label htmlFor="email" className="block text-[0.6875rem] font-bold uppercase tracking-wider text-outline">
-                  Work Email
+                  Email
                 </label>
                 <input
                   id="email"
                   name="email"
                   type="email"
-                  placeholder="name@hospital.org"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@email.com"
                   className="w-full rounded-t-lg border-0 border-b-2 border-transparent bg-surface-container-low px-4 py-3.5 text-on-surface transition-all placeholder:text-outline/50 focus:border-primary focus:ring-0 focus:outline-none"
                 />
               </div>
@@ -88,14 +101,21 @@ export default function LoginPage() {
                   <label htmlFor="password" className="block text-[0.6875rem] font-bold uppercase tracking-wider text-outline">
                     Password
                   </label>
-                  <a href="#" className="text-[0.6875rem] font-bold text-primary hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => setForgotOpen(true)}
+                    className="text-[0.6875rem] font-bold text-primary hover:underline"
+                  >
                     Forgot?
-                  </a>
+                  </button>
                 </div>
                 <input
                   id="password"
                   name="password"
                   type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   className="w-full rounded-t-lg border-0 border-b-2 border-transparent bg-surface-container-low px-4 py-3.5 text-on-surface transition-all placeholder:text-outline/50 focus:border-primary focus:ring-0 focus:outline-none"
                 />
@@ -106,7 +126,7 @@ export default function LoginPage() {
                   type="submit"
                   className="clinical-gradient flex w-full items-center justify-center gap-2 rounded-lg px-6 py-4 font-bold text-white shadow-sm transition-opacity hover:opacity-90"
                 >
-                  <span>Sign In</span>
+                  <span>Sign in</span>
                   <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
                 </button>
               </div>
@@ -121,6 +141,7 @@ export default function LoginPage() {
 
               <button
                 type="button"
+                onClick={() => showToast('Demo mode: Google sign-in is not connected.')}
                 className="flex w-full items-center justify-center gap-3 rounded-lg bg-surface-container-highest px-6 py-3.5 font-bold text-on-surface transition-colors hover:bg-surface-container-high"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24">
@@ -129,15 +150,15 @@ export default function LoginPage() {
                   <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                 </svg>
-                <span>Google Workspace</span>
+                <span>Sign in with Google</span>
               </button>
             </form>
 
             <div className="mt-8 border-t border-outline-variant/20 pt-8 text-center">
               <p className="text-sm text-on-surface-variant">
-                Don&apos;t have an account?{' '}
-                <a href="#" className="font-bold text-primary hover:underline">
-                  Contact Administrator
+                Need an account?{' '}
+                <a href="mailto:support@mediscribe.demo" className="font-bold text-primary hover:underline">
+                  Contact your care team
                 </a>
               </p>
             </div>
@@ -150,7 +171,7 @@ export default function LoginPage() {
             </div>
             <div className="flex items-center gap-1.5 grayscale">
               <span className="material-symbols-outlined text-[16px]">lock_person</span>
-              <span className="text-[0.625rem] font-bold uppercase tracking-widest">MFA Ready</span>
+              <span className="text-[0.625rem] font-bold uppercase tracking-widest">Private &amp; Secure</span>
             </div>
           </div>
         </div>
@@ -159,17 +180,27 @@ export default function LoginPage() {
       <div className="absolute bottom-12 left-1/2 z-20 hidden -translate-x-1/2 lg:block">
         <div className="flex max-w-xs items-center gap-4 rounded-xl border border-white/20 bg-surface/70 p-4 shadow-2xl backdrop-blur-xl">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary-container">
-            <span className="material-symbols-outlined text-on-secondary-container">clinical_notes</span>
+            <span className="material-symbols-outlined text-on-secondary-container">hearing</span>
           </div>
           <div>
-            <div className="text-[0.6875rem] font-bold uppercase tracking-wider text-outline">Active Stream</div>
-            <div className="text-sm font-bold text-on-surface">Main OR - Station 04</div>
+            <div className="text-[0.6875rem] font-bold uppercase tracking-wider text-outline">Live Translation</div>
+            <div className="text-sm font-bold text-on-surface">Ready when you are</div>
           </div>
           <div className="ml-auto flex gap-1">
-            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-error"></div>
+            <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-secondary"></div>
           </div>
         </div>
       </div>
+
+      <SimpleModal open={forgotOpen} onClose={() => setForgotOpen(false)} title="Reset password">
+        <p>
+          Please contact your care team or the clinic front desk to reset your password. They can help you get back
+          into your account.
+        </p>
+        <a href="mailto:support@mediscribe.demo" className="mt-4 inline-block font-bold text-primary hover:underline">
+          support@mediscribe.demo
+        </a>
+      </SimpleModal>
     </div>
   )
 }
