@@ -1,0 +1,31 @@
+# VoiceBridge Backend — Python Dependencies
+# Pinned to exact versions for reproducibility
+# Install: pip install -r requirements.txt
+
+# --- Django Core ---
+Django==6.0.3
+asgiref==3.11.1
+djangorestframework==3.17.0
+django-cors-headers==4.9.0
+
+# --- Real-time / WebSockets ---
+channels==4.3.2
+channels_redis==4.3.0
+daphne==4.2.1
+
+# --- AI APIs ---
+google-genai==1.68.0
+google-auth==2.49.1
+google-api-core==2.30.0
+
+# --- ElevenLabs (HTTP client) ---
+httpx==0.28.1
+
+# --- Database ---
+psycopg2-binary==2.9.11
+
+# --- Snowflake RAG ---
+snowflake-connector-python==4.3.0
+
+# --- Utilities ---
+python-dotenv==1.2.1
