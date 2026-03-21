@@ -1,4 +1,4 @@
-# MediScribe (VoiceBridge) — HooHacks 2026
+# MediScribe  — HooHacks 2026
 
 Real-time AI medical interpreter. Patient speaks their language, doctor sees English + medical flags. Doctor responds, patient hears their language.
 
