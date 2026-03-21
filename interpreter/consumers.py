@@ -108,11 +108,15 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
             else:
                 logger.warning(f"Unknown message type: {msg_type}")
 
-        # --- BINARY FRAME: patient audio chunk ---
+        # --- BINARY FRAME: audio chunk ---
         elif bytes_data:
             direction = self._pending_direction or "patient_to_provider"
             language = self._pending_language or self.patient_language
-            await self._handle_patient_audio(bytes_data, language)
+
+            if direction == "provider_to_patient":
+                await self._handle_provider_audio(bytes_data, language)
+            else:
+                await self._handle_patient_audio(bytes_data, language)
 
     # -----------------------------------------------------------------------
     # Patient audio pipeline
@@ -143,23 +147,13 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
         translated = result.get("translated", "")
         medical_flags = result.get("medical_flags", {})
 
-        # Step 3: Snowflake RAG validation (runs in parallel with DB save)
-        symptoms = medical_flags.get("symptoms", [])
-        body_parts = medical_flags.get("body_parts", [])
-        rag_result = await validate_medical_terms(symptoms, body_parts)
-
-        # Merge RAG enrichment into flags
-        medical_flags["rag_validated"] = rag_result.get("validated", False)
-        medical_flags["icd_suggestions"] = rag_result.get("icd_suggestions", [])
-        medical_flags["enriched_symptoms"] = rag_result.get("enriched_symptoms", symptoms)
-
-        # Step 4: Save to DB
+        # Step 3: Save to DB (Gemini now provides ICD / standardized terms directly)
         await self._save_message(
             direction="patient_to_provider",
             original_text=result.get("original", original_text),
             translated_text=translated,
             medical_flags=medical_flags,
-            rag_validated=rag_result.get("validated", False),
+            rag_validated=bool(medical_flags.get("icd_suggestions")),
         )
 
         # Step 5: Send back to ALL clients in this session (doctor + patient views)
@@ -183,6 +177,28 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
             "medical_flags": event["medical_flags"],
             "patient_language": event["patient_language"],
         }))
+
+    # -----------------------------------------------------------------------
+    # Provider audio pipeline (doctor speaks into mic)
+    # -----------------------------------------------------------------------
+
+    async def _handle_provider_audio(self, audio_bytes: bytes, patient_language: str):
+        """
+        Doctor spoke into mic. Transcribe English, then translate + TTS.
+        """
+        await self.send(json.dumps({
+            "type": "transcribing",
+            "message": "Transcribing doctor...",
+        }))
+
+        original_text = await self._transcribe_audio(audio_bytes, "en")
+        if not original_text or len(original_text.strip()) < 2:
+            return
+
+        await self._handle_provider_text({
+            "text": original_text,
+            "patient_language": patient_language,
+        })
 
     # -----------------------------------------------------------------------
     # Provider text pipeline

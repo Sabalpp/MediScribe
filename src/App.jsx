@@ -6,6 +6,7 @@ import LiveConsultation from './pages/dashboard/LiveConsultation'
 import HistoryPage from './pages/dashboard/HistoryPage'
 import PatientsPage from './pages/dashboard/PatientsPage'
 import SettingsPage from './pages/dashboard/SettingsPage'
+import RealTimeTalk from './pages/dashboard/RealTimeTalk'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="history" element={<HistoryPage />} />
         <Route path="patients" element={<PatientsPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="talk" element={<RealTimeTalk />} />
       </Route>
     </Routes>
   )

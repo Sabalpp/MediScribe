@@ -79,7 +79,7 @@ async def translate_patient_utterance(text: str, patient_language: str) -> dict:
     lang_name = LANG_NAMES.get(patient_language, patient_language)
     client = get_client()
 
-    prompt = f"""You are an expert real-time medical interpreter.
+    prompt = f"""You are an expert real-time medical interpreter with clinical knowledge.
 
 The patient is speaking {lang_name}. Their utterance is:
 "{text}"
@@ -88,6 +88,8 @@ Tasks:
 1. Clean up any transcription artifacts in the original
 2. Translate accurately to English, preserving medical meaning
 3. Extract medical flags to assist the doctor
+4. Map symptoms to standardized medical terms and suggest ICD-10 codes
+5. Check for any drug interaction risks if medications are mentioned
 
 Respond ONLY with valid JSON, no markdown, no explanation:
 {{
@@ -98,7 +100,10 @@ Respond ONLY with valid JSON, no markdown, no explanation:
     "urgency": "<low|medium|high>",
     "body_parts": ["<body parts mentioned>"],
     "medications": ["<medications mentioned>"],
-    "suggested_questions": ["<1-2 follow-up questions for the doctor>"]
+    "suggested_questions": ["<1-2 follow-up questions for the doctor>"],
+    "standardized_terms": ["<standardized medical terms, e.g. 'pleuritic chest pain'>"],
+    "icd_suggestions": ["<ICD-10 codes like R07.1 - Chest pain on breathing>"],
+    "drug_interactions": ["<any flagged interactions, empty if none>"]
   }}
 }}"""
 

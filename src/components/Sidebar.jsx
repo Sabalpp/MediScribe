@@ -5,6 +5,7 @@ import BrandMark from './BrandMark'
 
 const navItems = [
   { icon: 'dashboard', label: 'My visit', to: '/dashboard', end: true },
+  { icon: 'mic', label: 'Real-Time Talk', to: '/dashboard/talk' },
   { icon: 'history', label: 'Past visits', to: '/dashboard/history' },
   { icon: 'person', label: 'My info', to: '/dashboard/patients' },
   { icon: 'settings', label: 'Settings', to: '/dashboard/settings' },
