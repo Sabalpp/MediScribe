@@ -37,7 +37,7 @@ LANG_NAMES = {
     "hi": "Hindi",
 }
 
-MODEL = "gemini-2.0-flash"  # Fast + capable — ideal for hackathon real-time use
+MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 
 def _parse_json_response(raw: str, fallback: dict) -> dict:
@@ -104,9 +104,19 @@ Respond ONLY with valid JSON, no markdown, no explanation:
 
     fallback = {
         "original": text,
-        "translated": f"[Translation error]",
-        "medical_flags": {},
+        "translated": f"(mock) {text}",
+        "medical_flags": {
+            "symptoms": ["unspecified symptom"],
+            "urgency": "medium",
+            "body_parts": [],
+            "medications": [],
+            "suggested_questions": ["Can you describe the pain?", "When did it start?"],
+        },
     }
+
+    if not GEMINI_API_KEY:
+        logger.warning("GEMINI_API_KEY not set — returning mock patient translation")
+        return fallback
 
     try:
         response = await asyncio.to_thread(
@@ -157,7 +167,11 @@ Respond ONLY with valid JSON:
   "translated": "<translation in {lang_name}>"
 }}"""
 
-    fallback = {"original": text, "translated": "[Translation unavailable]"}
+    fallback = {"original": text, "translated": f"(mock) {text}"}
+
+    if not GEMINI_API_KEY:
+        logger.warning("GEMINI_API_KEY not set — returning mock provider translation")
+        return fallback
 
     try:
         response = await asyncio.to_thread(
