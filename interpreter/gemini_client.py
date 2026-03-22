@@ -9,27 +9,19 @@ Mode 1 — Doctor→Patient (Simplification & Tone):
 Mode 2 — Patient→Doctor (Grammar Recovery & Structuring):
   Raw patient speech (any language) → translated to English → grammar-fixed professional English
 
-Gemini is the Orchestrator. 11 Labs handles STT/TTS only.
+Uses OpenRouter API with cheap Gemini model.
 """
 
 import os
 import json
-import asyncio
 import logging
-from google import genai
-from google.genai import types
+import httpx
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-
-_client = None
-
-def get_client():
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=GEMINI_API_KEY)
-    return _client
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
 
 LANG_NAMES = {
     "es": "Spanish",
@@ -41,8 +33,6 @@ LANG_NAMES = {
     "hi": "Hindi",
     "ne": "Nepali",
 }
-
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 SYSTEM_PROMPT = """You are MediScribe, a real-time Medical Interpretation Engine embedded in a live doctor-patient call. You operate with sub-second latency constraints. Your job is NOT simple translation — you are the cognitive bridge between two people who cannot understand each other during a medical visit.
 
@@ -89,8 +79,32 @@ def _parse_json_response(raw: str, fallback: dict) -> dict:
     try:
         return json.loads(text.strip())
     except json.JSONDecodeError as e:
-        logger.error(f"Gemini JSON parse error: {e} | raw: {raw[:200]}")
+        logger.error(f"JSON parse error: {e} | raw: {raw[:200]}")
         return fallback
+
+
+async def _chat(prompt: str, temperature: float = 0.1, max_tokens: int = 1024) -> str:
+    """Send a chat completion request to OpenRouter."""
+    async with httpx.AsyncClient(timeout=25.0) as client:
+        response = await client.post(
+            OPENROUTER_URL,
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": MODEL,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
 
 
 # ---------------------------------------------------------------------------
@@ -98,22 +112,7 @@ def _parse_json_response(raw: str, fallback: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 async def process_doctor_to_patient(english_text: str, patient_language: str) -> dict:
-    """
-    Doctor spoke English. Pipeline:
-    1. Gemini simplifies medical jargon to 5th-grade level
-    2. Gemini translates simplified English → patient's language
-    3. Returns both for display + TTS
-
-    Returns:
-    {
-        "original": "You have acute pleuritic chest pain consistent with pericarditis",
-        "simplified": "You have a sharp pain in your chest when you breathe. This is because the lining around your heart is swollen.",
-        "translated": "<same in patient's language>",
-        "follow_up_suggestions": ["Ask: What medicine will help?", "Ask: Is this serious?"]
-    }
-    """
     lang_name = LANG_NAMES.get(patient_language, patient_language)
-    client = get_client()
 
     prompt = f"""MODE: Doctor-to-Patient
 
@@ -138,29 +137,19 @@ Respond ONLY with valid JSON:
     fallback = {
         "original": english_text,
         "simplified": english_text,
-        "translated": f"(mock translation) {english_text}",
+        "translated": f"(translation unavailable) {english_text}",
         "follow_up_suggestions": ["Can you explain that in simpler words?"],
     }
 
-    if not GEMINI_API_KEY:
-        logger.warning("GEMINI_API_KEY not set — returning mock")
+    if not OPENROUTER_API_KEY:
+        logger.warning("OPENROUTER_API_KEY not set — returning fallback")
         return fallback
 
     try:
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.1,
-                max_output_tokens=1024,
-                response_mime_type="application/json",
-            ),
-        )
-        return _parse_json_response(response.text, fallback)
+        raw = await _chat(prompt)
+        return _parse_json_response(raw, fallback)
     except Exception as e:
-        logger.error(f"Gemini doctor→patient error: {e}")
+        logger.error(f"Doctor→patient error: {e}")
         return fallback
 
 
@@ -169,28 +158,7 @@ Respond ONLY with valid JSON:
 # ---------------------------------------------------------------------------
 
 async def process_patient_to_doctor(patient_text: str, patient_language: str) -> dict:
-    """
-    Patient spoke in their language (transcribed by 11 Labs STT).
-    Pipeline:
-    1. Gemini translates raw patient text → English
-    2. Gemini applies Grammar Recovery: fixes broken/funky translation into
-       professional medical English for the doctor
-    3. Extracts medical flags
-
-    Returns:
-    {
-        "original": "मेरी छाती में बहुत दर्द है जब मैं सांस लेता हूं",
-        "raw_english": "my chest do big hurt when i breathing",
-        "fixed_english": "The patient is experiencing significant chest pain on inspiration.",
-        "medical_flags": {
-            "symptoms": ["chest pain on breathing"],
-            "urgency": "high",
-            "suggested_questions": ["How long has this been happening?"]
-        }
-    }
-    """
     lang_name = LANG_NAMES.get(patient_language, patient_language)
-    client = get_client()
 
     prompt = f"""MODE: Patient-to-Doctor
 
@@ -218,7 +186,7 @@ Respond ONLY with valid JSON:
     fallback = {
         "original": patient_text,
         "raw_english": f"(direct) {patient_text}",
-        "fixed_english": f"(mock) {patient_text}",
+        "fixed_english": f"(translation unavailable) {patient_text}",
         "medical_flags": {
             "symptoms": [],
             "urgency": "medium",
@@ -226,25 +194,15 @@ Respond ONLY with valid JSON:
         },
     }
 
-    if not GEMINI_API_KEY:
-        logger.warning("GEMINI_API_KEY not set — returning mock")
+    if not OPENROUTER_API_KEY:
+        logger.warning("OPENROUTER_API_KEY not set — returning fallback")
         return fallback
 
     try:
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.1,
-                max_output_tokens=1024,
-                response_mime_type="application/json",
-            ),
-        )
-        return _parse_json_response(response.text, fallback)
+        raw = await _chat(prompt)
+        return _parse_json_response(raw, fallback)
     except Exception as e:
-        logger.error(f"Gemini patient→doctor error: {e}")
+        logger.error(f"Patient→doctor error: {e}")
         return fallback
 
 
@@ -252,15 +210,11 @@ Respond ONLY with valid JSON:
 # Session summary — called when session ends
 # ---------------------------------------------------------------------------
 
-async def generate_session_summary(messages: list[dict], patient_language: str) -> str:
-    """
-    Full transcript → structured clinical summary.
-    """
+async def generate_session_summary(messages: list, patient_language: str) -> str:
     if not messages:
         return "No messages recorded in this session."
 
     lang_name = LANG_NAMES.get(patient_language, "the patient's language")
-    client = get_client()
 
     lines = []
     for m in messages:
@@ -290,13 +244,7 @@ Generate a structured clinical summary:
 Be concise, clinically accurate. Do not invent information not in the transcript."""
 
     try:
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=2048),
-        )
-        return response.text.strip()
+        return await _chat(prompt, temperature=0.2, max_tokens=2048)
     except Exception as e:
-        logger.error(f"Gemini summary error: {e}")
+        logger.error(f"Summary error: {e}")
         return "Summary generation failed — please review transcript manually."

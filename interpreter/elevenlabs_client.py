@@ -16,11 +16,6 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
-
-# Voice IDs — these are ElevenLabs pre-built voices that perform well
-# in each language with multilingual_v2.
-# Sabal: swap these out for any voice IDs you prefer from ElevenLabs voice library.
 VOICE_MAP = {
     "es": "XB0fDUnXU5powFXDhCwa",  # Charlotte — natural Spanish
     "zh": "jsCqWAovK2LkecY7zXl4",  # Freya — Mandarin
@@ -29,15 +24,11 @@ VOICE_MAP = {
     "pt": "XB0fDUnXU5powFXDhCwa",
     "ar": "jsCqWAovK2LkecY7zXl4",
     "hi": "EXAVITQu4vr4xnSDxMaL",
+    "ne": "EXAVITQu4vr4xnSDxMaL",  # Sarah — Nepali
     "en": "JBFqnCBsd6RMkjVDRZzb",  # George — English (for doctor TTS)
 }
 
 TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-HEADERS = {
-    "xi-api-key": ELEVENLABS_API_KEY,
-    "Content-Type": "application/json",
-    "Accept": "audio/mpeg",
-}
 
 
 async def synthesize_speech(text: str, language: str) -> str:
@@ -52,7 +43,8 @@ async def synthesize_speech(text: str, language: str) -> str:
         Base64-encoded MP3 audio string (ready to send over WebSocket)
         Returns empty string on failure so the frontend can degrade gracefully.
     """
-    if not ELEVENLABS_API_KEY:
+    api_key = os.getenv("ELEVENLABS_API_KEY", "")
+    if not api_key:
         logger.warning("ELEVENLABS_API_KEY not set — skipping TTS")
         return ""
 
@@ -63,9 +55,9 @@ async def synthesize_speech(text: str, language: str) -> str:
         "text": text,
         "model_id": "eleven_multilingual_v2",
         "voice_settings": {
-            "stability": 0.5,          # Balanced — not too robotic, not too variable
-            "similarity_boost": 0.8,   # Stay close to the base voice character
-            "style": 0.2,              # Slight expressiveness — appropriate for medical
+            "stability": 0.5,
+            "similarity_boost": 0.8,
+            "style": 0.2,
             "use_speaker_boost": True,
         },
     }
@@ -74,7 +66,11 @@ async def synthesize_speech(text: str, language: str) -> str:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
                 url,
-                headers={**HEADERS, "xi-api-key": ELEVENLABS_API_KEY},
+                headers={
+                    "xi-api-key": api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                },
                 json=payload,
             )
             response.raise_for_status()
@@ -99,7 +95,8 @@ async def synthesize_speech_stream(text: str, language: str):
 
     Yields: bytes chunks of MP3 audio
     """
-    if not ELEVENLABS_API_KEY:
+    api_key = os.getenv("ELEVENLABS_API_KEY", "")
+    if not api_key:
         return
 
     voice_id = VOICE_MAP.get(language, VOICE_MAP["en"])
@@ -119,7 +116,11 @@ async def synthesize_speech_stream(text: str, language: str):
             async with client.stream(
                 "POST",
                 url,
-                headers={**HEADERS, "xi-api-key": ELEVENLABS_API_KEY},
+                headers={
+                    "xi-api-key": api_key,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                },
                 json=payload,
             ) as response:
                 response.raise_for_status()

@@ -209,10 +209,11 @@ export function connectSession({ sessionId, onMessage, onClose, onError, onOpen 
         ws.send(typeof data === 'string' ? data : JSON.stringify(data))
       }
     },
-    sendAudio: (blob, direction, patientLanguage) => {
+    sendAudio: async (blob, direction, patientLanguage) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'audio_metadata', direction, patient_language: patientLanguage }))
-        ws.send(blob)
+        const buf = await blob.arrayBuffer()
+        ws.send(buf)
       }
     },
     sendText: (text, patientLanguage) => {

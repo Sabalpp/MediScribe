@@ -10,8 +10,8 @@ DELETE /api/sessions/<id>/             Delete session (admin only)
 GET    /api/health/                    Health check
 """
 
-import asyncio
 import logging
+from asgiref.sync import async_to_sync
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -110,8 +110,8 @@ def end_session(request, session_id):
     # Generate summary synchronously (wrap async in sync context)
     if messages_data:
         try:
-            summary = asyncio.run(
-                generate_session_summary(messages_data, session.patient_language)
+            summary = async_to_sync(generate_session_summary)(
+                messages_data, session.patient_language
             )
             session.medical_summary = summary
         except Exception as e:
