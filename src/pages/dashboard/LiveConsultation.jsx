@@ -33,18 +33,25 @@ export default function LiveConsultation() {
   const [micActive, setMicActive] = useState(false)
   const [vadStatus, setVadStatus] = useState('idle')
   const [doctorText, setDoctorText] = useState('')
+  const [pttHeld, setPttHeld] = useState(false)
 
   const scrollRef = useRef(null)
   const sessionRef = useRef(null)
   const audioRef = useRef(null)
   const langRef = useRef(patientLang)
   const roleRef = useRef(role)
+  const pttRecorderRef = useRef(null)
+  const pttStreamRef = useRef(null)
+  const pttChunksRef = useRef([])
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages])
   useEffect(() => { langRef.current = patientLang }, [patientLang])
   useEffect(() => { roleRef.current = role }, [role])
+  useEffect(() => {
+    if (vadStatus === 'error') showToast('Voice detection failed — use Push-to-Talk instead.')
+  }, [vadStatus, showToast])
 
   const sendAudio = useCallback((blob) => {
     const conn = sessionRef.current
@@ -64,6 +71,43 @@ export default function LiveConsultation() {
       setMicActive(true)
     }
   }, [micActive, vad])
+
+  // --- PTT fallback (works without WASM) ---
+  const pttDown = useCallback(async (pttRole) => {
+    if (pttHeld) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      pttStreamRef.current = stream
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      pttChunksRef.current = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) pttChunksRef.current.push(e.data) }
+      recorder.onstop = () => {
+        const blob = new Blob(pttChunksRef.current, { type: 'audio/webm' })
+        stream.getTracks().forEach((t) => t.stop())
+        if (blob.size > 1000) {
+          const conn = sessionRef.current
+          if (conn?.ws?.readyState === WebSocket.OPEN) {
+            const direction = pttRole === 'patient' ? 'patient_to_provider' : 'provider_to_patient'
+            conn.sendAudio(blob, direction, langRef.current)
+          }
+        }
+      }
+      recorder.start()
+      pttRecorderRef.current = recorder
+      roleRef.current = pttRole
+      setPttHeld(true)
+    } catch (err) {
+      showToast(`Mic error: ${err.message}`)
+    }
+  }, [pttHeld, showToast])
+
+  const pttUp = useCallback(() => {
+    if (pttRecorderRef.current?.state === 'recording') {
+      pttRecorderRef.current.stop()
+    }
+    pttRecorderRef.current = null
+    setPttHeld(false)
+  }, [])
 
   const sendPreset = useCallback((text) => {
     if (!text || !sessionRef.current) return
@@ -266,6 +310,34 @@ export default function LiveConsultation() {
           >
             <span className="material-symbols-outlined text-[16px]">{micActive ? 'mic' : 'mic_off'}</span>
             {vad.loading ? '...' : micActive ? (vadStatus === 'speaking' ? 'Speaking...' : 'Listening') : 'Mic Off'}
+          </button>
+
+          {/* PTT fallback buttons */}
+          <button
+            onMouseDown={() => pttDown('patient')}
+            onMouseUp={pttUp}
+            onMouseLeave={pttUp}
+            onTouchStart={() => pttDown('patient')}
+            onTouchEnd={pttUp}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition select-none ${
+              pttHeld && roleRef.current === 'patient' ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-outline'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">record_voice_over</span>
+            PTT Patient
+          </button>
+          <button
+            onMouseDown={() => pttDown('doctor')}
+            onMouseUp={pttUp}
+            onMouseLeave={pttUp}
+            onTouchStart={() => pttDown('doctor')}
+            onTouchEnd={pttUp}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition select-none ${
+              pttHeld && roleRef.current === 'doctor' ? 'bg-secondary text-on-secondary' : 'bg-surface-container-high text-outline'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">record_voice_over</span>
+            PTT Doctor
           </button>
 
           <button
