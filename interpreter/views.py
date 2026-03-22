@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from .models import Session, Message
 from .serializers import SessionSerializer, SessionCreateSerializer, MessageSerializer
 from .gemini_client import generate_session_summary
+from .snowflake_client import sync_session, get_analytics
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,14 @@ def end_session(request, session_id):
         session.medical_summary = "No messages were recorded during this session."
 
     session.save()
+
+    # Refresh to get fresh messages queryset, then sync to Snowflake
+    try:
+        session = Session.objects.prefetch_related("messages").get(id=session_id)
+        sync_session(session)
+    except Exception as e:
+        logger.error(f"Snowflake sync failed: {e}")
+
     return Response(SessionSerializer(session).data)
 
 
@@ -161,3 +170,9 @@ def session_messages(request, session_id):
         "count": messages.count(),
         "messages": serializer.data,
     })
+
+
+@api_view(["GET"])
+def analytics(request):
+    """Return aggregate analytics from Snowflake warehouse."""
+    return Response(get_analytics())

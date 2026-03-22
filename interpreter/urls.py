@@ -8,4 +8,5 @@ urlpatterns = [
     path("sessions/<uuid:session_id>/end/", views.end_session, name="session-end"),
     path("sessions/<uuid:session_id>/summary/", views.session_summary, name="session-summary"),
     path("sessions/<uuid:session_id>/messages/", views.session_messages, name="session-messages"),
+    path("analytics/", views.analytics, name="analytics"),
 ]
