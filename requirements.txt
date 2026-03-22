@@ -27,5 +27,10 @@ psycopg2-binary>=2.9
 # --- Snowflake RAG ---
 snowflake-connector-python>=3.0
 
+# --- Production serving ---
+whitenoise>=6.5
+dj-database-url>=2.1
+gunicorn>=22.0
+
 # --- Utilities ---
 python-dotenv>=1.0

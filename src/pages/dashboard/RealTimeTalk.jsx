@@ -1,8 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import useVAD from '../../hooks/useVAD'
 
-const API = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
-const WS_BASE = API.replace('http', 'ws')
+const API = import.meta.env.VITE_API_BASE_URL || (
+  window.location.hostname === 'localhost' ? 'http://localhost:8000' : ''
+)
+const WS_BASE = API
+  ? API.replace('http', 'ws')
+  : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
 
 const LANGUAGES = [
   { code: 'es', label: 'Spanish' },
