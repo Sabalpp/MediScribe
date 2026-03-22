@@ -1,12 +1,4 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
-import { MicVAD, utils } from '@ricky0123/vad-web'
-
-/**
- * Silero VAD hook tuned for medical interpreter use.
- *
- * onSpeechEnd receives a WAV Blob ready to send over WebSocket.
- * The caller decides direction (patient vs doctor) and sends it.
- */
 
 const VAD_CONFIG = {
   model: 'legacy',
@@ -35,6 +27,8 @@ export default function useVAD({ onSpeechEnd, onStatusChange }) {
 
     setLoading(true)
     try {
+      const { MicVAD, utils } = await import('@ricky0123/vad-web')
+
       const vad = await MicVAD.new({
         ...VAD_CONFIG,
 
