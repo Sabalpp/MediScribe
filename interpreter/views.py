@@ -50,7 +50,7 @@ def sessions_list(request):
                 {"error": "provider_id query param required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        sessions = Session.objects.filter(provider_id=provider_id)
+        sessions = Session.objects.filter(provider_id=provider_id).prefetch_related("messages")
         serializer = SessionSerializer(sessions, many=True)
         return Response(serializer.data)
 
@@ -117,6 +117,8 @@ def end_session(request, session_id):
         except Exception as e:
             logger.error(f"Summary generation failed: {e}")
             session.medical_summary = "Summary could not be generated automatically."
+    else:
+        session.medical_summary = "No messages were recorded during this session."
 
     session.save()
     return Response(SessionSerializer(session).data)

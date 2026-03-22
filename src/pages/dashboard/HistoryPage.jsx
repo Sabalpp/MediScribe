@@ -44,6 +44,18 @@ export default function HistoryPage() {
     }
   }
 
+  const endAndSummarize = async (id) => {
+    try {
+      const res = await fetch(`${API}/api/sessions/${id}/end/`, { method: 'POST' })
+      if (!res.ok) throw new Error(`${res.status}`)
+      const updated = await res.json()
+      setSessions((prev) => prev.map((s) => (s.id === id ? updated : s)))
+      showToast('Session ended — summary generated.')
+    } catch {
+      showToast('Failed to end session.')
+    }
+  }
+
   const langLabel = (code) =>
     ({ es: 'Spanish', zh: 'Mandarin', vi: 'Vietnamese', fr: 'French', pt: 'Portuguese', ar: 'Arabic', hi: 'Hindi', ne: 'Nepali' })[code] || code
 
@@ -118,8 +130,19 @@ export default function HistoryPage() {
                         <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-secondary">AI Summary</div>
                         <p className="whitespace-pre-wrap text-sm leading-relaxed text-on-surface">{s.medical_summary}</p>
                       </div>
+                    ) : !s.ended_at ? (
+                      <div className="mb-4 flex items-center justify-between rounded-lg bg-tertiary-container/10 p-4">
+                        <p className="text-xs text-outline">Session still active — end it to generate a summary.</p>
+                        <button
+                          type="button"
+                          onClick={() => endAndSummarize(s.id)}
+                          className="ml-4 shrink-0 rounded-lg bg-primary px-4 py-2 text-xs font-bold text-on-primary transition hover:bg-primary/80"
+                        >
+                          End &amp; Summarize
+                        </button>
+                      </div>
                     ) : (
-                      <p className="mb-4 text-xs text-outline">No summary — session may not have been ended through the app.</p>
+                      <p className="mb-4 text-xs text-outline">No summary available for this session.</p>
                     )}
 
                     {(s.messages || []).length > 0 ? (

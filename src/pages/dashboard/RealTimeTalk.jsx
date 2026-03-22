@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import useVAD from '../../hooks/useVAD'
+import { useToast } from '../../context/ToastContext'
 import { getApiBaseUrl, getWsBaseUrl } from '../../lib/devApiBase.js'
 
 const API = getApiBaseUrl()
@@ -17,6 +18,7 @@ const LANGUAGES = [
 ]
 
 export default function RealTimeTalk() {
+  const { showToast } = useToast()
   const [lang, setLang] = useState('es')
   const [sessionId, setSessionId] = useState(null)
   const [connected, setConnected] = useState(false)
@@ -105,7 +107,8 @@ export default function RealTimeTalk() {
             suggestions: d.follow_up_suggestions,
           })
         } else if (d.type === 'error') {
-          setStatus(`Error: ${d.message}`); setStep('')
+          setStatus('Ready'); setStep('')
+          showToast(d.message || 'An error occurred')
         }
       }
 
@@ -119,19 +122,26 @@ export default function RealTimeTalk() {
       addMsg({ role: 'system', original: `Session started — ${LANGUAGES.find((l) => l.code === lang)?.label}` })
     } catch (err) {
       setStatus(`Failed: ${err.message}`)
+      showToast(`Connection failed: ${err.message}`)
     }
-  }, [lang, addMsg, vad])
+  }, [lang, addMsg, vad, showToast])
 
   const endSession = useCallback(async () => {
     await vad.destroy()
     setMicRole(null)
     if (wsRef.current) wsRef.current.close()
     if (sessionId) {
-      try { await fetch(`${API}/api/sessions/${sessionId}/end/`, { method: 'POST' }) } catch {}
+      try {
+        const res = await fetch(`${API}/api/sessions/${sessionId}/end/`, { method: 'POST' })
+        if (!res.ok) throw new Error(`${res.status}`)
+        showToast('Session ended — summary saved.')
+      } catch (err) {
+        showToast('Failed to save session summary. Check the backend.')
+      }
     }
     setConnected(false); setSessionId(null); setStatus('')
     addMsg({ role: 'system', original: 'Session ended' })
-  }, [sessionId, addMsg, vad])
+  }, [sessionId, addMsg, vad, showToast])
 
   // --- Toggle VAD mic for a role ---
   const toggleVAD = useCallback(async (role) => {
@@ -260,7 +270,32 @@ export default function RealTimeTalk() {
       {/* Controls */}
       {connected && (
         <div className="space-y-2 border-t border-[#1e293b] px-6 py-3">
-          {/* VAD row */}
+          {/* Doctor quick-send presets */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500">Doctor says:</span>
+            {[
+              "Your blood pressure is 150 over 95, which is high. We need to start you on medication.",
+              "I'm going to order a complete blood count and a metabolic panel to check your liver and kidneys.",
+              "You have acute bronchitis. I'm prescribing an inhaler and antibiotics for 7 days.",
+              "The X-ray shows no fracture, but you have soft tissue swelling. Rest, ice, and ibuprofen.",
+              "I need you to fast for 12 hours before your next visit so we can do a fasting glucose test.",
+              "Do you have any allergies to medications?",
+            ].map((phrase, i) => (
+              <button
+                key={i}
+                onClick={() => {
+                  if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({ type: 'provider_text', text: phrase, patient_language: lang }))
+                  }
+                }}
+                className="rounded-lg bg-emerald-900/30 px-3 py-1.5 text-xs text-emerald-300 transition hover:bg-emerald-900/50"
+              >
+                {phrase.length > 50 ? phrase.slice(0, 50) + '...' : phrase}
+              </button>
+            ))}
+          </div>
+
+          {/* Mic + text row */}
           <div className="flex items-center gap-3">
             <span className="w-10 text-[10px] font-bold uppercase tracking-wider text-gray-500">VAD</span>
             <button
@@ -288,7 +323,6 @@ export default function RealTimeTalk() {
 
             <div className="mx-2 h-6 w-px bg-[#334155]" />
 
-            {/* PTT row */}
             <span className="w-10 text-[10px] font-bold uppercase tracking-wider text-gray-500">PTT</span>
             <button
               onMouseDown={() => pttDown('patient')}
@@ -311,7 +345,6 @@ export default function RealTimeTalk() {
 
             <div className="mx-2 h-6 w-px bg-[#334155]" />
 
-            {/* Text input */}
             <input
               type="text"
               value={doctorText}

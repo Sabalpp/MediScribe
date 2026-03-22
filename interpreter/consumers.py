@@ -30,6 +30,13 @@ from .elevenlabs_client import synthesize_speech
 logger = logging.getLogger(__name__)
 
 
+def _multipart_audio_part(audio_bytes: bytes):
+    """VAD sends WAV; browser may send webm elsewhere — label multipart correctly for STT."""
+    if len(audio_bytes) >= 12 and audio_bytes[:4] == b"RIFF" and audio_bytes[8:12] == b"WAVE":
+        return ("audio.wav", audio_bytes, "audio/wav")
+    return ("audio.webm", audio_bytes, "audio/webm")
+
+
 class InterpreterConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
@@ -106,6 +113,7 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
 
         original_text = await self._transcribe_audio(audio_bytes, patient_language)
         if not original_text or len(original_text.strip()) < 2:
+            await self._send_error("Could not understand the audio. Please speak again.")
             return
 
         await self.send(json.dumps({"type": "processing", "step": "gemini", "message": "Processing..."}))
@@ -151,6 +159,7 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
 
         english_text = await self._transcribe_audio(audio_bytes, "en")
         if not english_text or len(english_text.strip()) < 2:
+            await self._send_error("Could not transcribe audio. Try again or type your message.")
             return
 
         await self._handle_doctor_message(english_text, patient_language)
@@ -224,11 +233,12 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
                 "es": "es", "zh": "zh", "vi": "vi", "ne": "ne",
                 "fr": "fr", "pt": "pt", "ar": "ar", "hi": "hi", "en": "en",
             }
+            audio_part = _multipart_audio_part(audio_bytes)
             async with httpx.AsyncClient(timeout=20.0) as client:
                 response = await client.post(
                     "https://api.elevenlabs.io/v1/speech-to-text",
                     headers={"xi-api-key": api_key},
-                    files={"audio": ("audio.webm", audio_bytes, "audio/webm")},
+                    files={"audio": audio_part},
                     data={
                         "model_id": "scribe_v1",
                         "language_code": lang_map.get(language, language),
