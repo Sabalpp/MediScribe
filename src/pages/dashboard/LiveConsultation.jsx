@@ -388,22 +388,33 @@ export default function LiveConsultation() {
       <div className="space-y-2 border-t border-outline-variant/30 bg-surface-container px-6 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[10px] font-bold uppercase tracking-wider text-secondary">Doctor says:</span>
-          {[
-            "Your blood pressure is 150 over 95, which is high. We need to start you on medication.",
-            "I'm going to order a complete blood count and a metabolic panel.",
-            "You have acute bronchitis. I'm prescribing an inhaler and antibiotics for 7 days.",
-            "The X-ray shows no fracture. Rest, ice, and ibuprofen.",
-            "Do you have any allergies to medications?",
-            "When did the symptoms start?",
-          ].map((phrase, i) => (
-            <button
-              key={i}
-              onClick={() => sendPreset(phrase)}
-              className="rounded-lg bg-secondary/10 px-3 py-1.5 text-xs text-secondary transition hover:bg-secondary/20"
-            >
-              {phrase.length > 50 ? phrase.slice(0, 50) + '...' : phrase}
-            </button>
-          ))}
+          {(() => {
+            const aiSuggestions = messages
+              .filter((m) => m.role === 'patient' && m.flags?.suggested_questions?.length)
+              .flatMap((m) => m.flags.suggested_questions)
+            const unique = [...new Set(aiSuggestions)].slice(-6)
+            const starters = [
+              "Do you have any allergies to medications?",
+              "When did the symptoms start?",
+              "Can you describe the pain?",
+              "Are you currently taking any medication?",
+            ]
+            const phrases = unique.length > 0 ? unique : starters
+            return phrases.map((phrase, i) => (
+              <button
+                key={i}
+                onClick={() => sendPreset(phrase)}
+                className={`rounded-lg px-3 py-1.5 text-xs transition ${
+                  unique.length > 0
+                    ? 'bg-tertiary/10 text-tertiary hover:bg-tertiary/20 border border-tertiary/20'
+                    : 'bg-secondary/10 text-secondary hover:bg-secondary/20'
+                }`}
+              >
+                {unique.length > 0 && <span className="mr-1">AI:</span>}
+                {phrase.length > 60 ? phrase.slice(0, 60) + '...' : phrase}
+              </button>
+            ))
+          })()}
         </div>
         <div className="flex items-center gap-3">
           <input
