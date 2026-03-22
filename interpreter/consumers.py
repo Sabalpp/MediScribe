@@ -238,7 +238,7 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
                 response = await client.post(
                     "https://api.elevenlabs.io/v1/speech-to-text",
                     headers={"xi-api-key": api_key},
-                    files={"audio": audio_part},
+                    files={"file": audio_part},
                     data={
                         "model_id": "scribe_v1",
                         "language_code": lang_map.get(language, language),
