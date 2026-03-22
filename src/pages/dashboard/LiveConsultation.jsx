@@ -2,7 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useDashboardSession } from '../../context/DashboardSessionContext'
 import { useToast } from '../../context/ToastContext'
 import { connectSession, createSession } from '../../services/api'
-import * as callCapture from '../../services/callCapture'
+import useVAD from '../../hooks/useVAD'
+import { getApiBaseUrl } from '../../lib/devApiBase.js'
+
+const API = getApiBaseUrl()
 
 const LANGUAGES = [
   { code: 'es', label: 'Spanish' },
@@ -27,17 +30,52 @@ export default function LiveConsultation() {
   const [messages, setMessages] = useState([])
   const [status, setStatus] = useState('')
   const [step, setStep] = useState('')
-  const [micMuted, setMicMuted] = useState(false)
+  const [micActive, setMicActive] = useState(false)
+  const [vadStatus, setVadStatus] = useState('idle')
+  const [doctorText, setDoctorText] = useState('')
 
   const scrollRef = useRef(null)
   const sessionRef = useRef(null)
   const audioRef = useRef(null)
+  const langRef = useRef(patientLang)
+  const roleRef = useRef(role)
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages])
+  useEffect(() => { langRef.current = patientLang }, [patientLang])
+  useEffect(() => { roleRef.current = role }, [role])
 
-  useEffect(() => { callCapture.setMicMuted(micMuted) }, [micMuted])
+  const sendAudio = useCallback((blob) => {
+    const conn = sessionRef.current
+    if (!conn?.ws || conn.ws.readyState !== WebSocket.OPEN) return
+    const direction = roleRef.current === 'patient' ? 'patient_to_provider' : 'provider_to_patient'
+    conn.sendAudio(blob, direction, langRef.current)
+  }, [])
+
+  const vad = useVAD({ onSpeechEnd: sendAudio, onStatusChange: setVadStatus })
+
+  const toggleMic = useCallback(async () => {
+    if (micActive) {
+      await vad.pause()
+      setMicActive(false)
+    } else {
+      await vad.start()
+      setMicActive(true)
+    }
+  }, [micActive, vad])
+
+  const sendPreset = useCallback((text) => {
+    if (!text || !sessionRef.current) return
+    sessionRef.current.sendText(text, langRef.current)
+  }, [])
+
+  const sendDocText = useCallback(() => {
+    const t = doctorText.trim()
+    if (!t || !sessionRef.current) return
+    sessionRef.current.sendText(t, langRef.current)
+    setDoctorText('')
+  }, [doctorText])
 
   // --- Create session (first client) ---
   const handleCreate = useCallback(async () => {
@@ -76,24 +114,14 @@ export default function LiveConsultation() {
     const conn = connectSession({
       sessionId: id,
       onOpen: () => {
-        setStatus('Starting mic capture...')
-        callCapture.startMicOnly({
-          ws: conn.ws,
-          language: patientLang,
-          role,
-        }).then(() => {
-          setStatus('Live — listening to your microphone')
-          showToast(`Connected as ${role}. Speak naturally — MediScribe is translating.`)
-          window.electronAPI?.startSession()
-        }).catch((err) => {
-          setStatus('Mic access denied')
-          showToast(`Microphone error: ${err.message}`)
-        })
+        setStatus('Connected — toggle mic to start')
+        showToast(`Connected as ${role}. Toggle your mic to begin.`)
       },
       onMessage: handleWsMessage,
       onClose: () => {
         setStatus('Disconnected')
-        callCapture.stopAll()
+        vad.destroy()
+        setMicActive(false)
       },
       onError: () => setStatus('Connection error'),
     })
@@ -105,17 +133,25 @@ export default function LiveConsultation() {
     }
   }
 
-  const handleStop = () => {
-    callCapture.stopAll()
+  const handleStop = async () => {
+    await vad.destroy()
+    setMicActive(false)
     sessionRef.current?.close()
     sessionRef.current = null
+    if (sessionId) {
+      try {
+        const res = await fetch(`${API}/api/sessions/${sessionId}/end/`, { method: 'POST' })
+        if (!res.ok) throw new Error(`${res.status}`)
+        showToast('Session ended — summary saved.')
+      } catch {
+        showToast('Failed to save session summary.')
+      }
+    }
     endCall()
-    window.electronAPI?.endSession()
     setStatus('')
     setStep('')
     setSessionId('')
     setMode(null)
-    showToast('Session ended.')
   }
 
   function handleWsMessage(data) {
@@ -155,8 +191,9 @@ export default function LiveConsultation() {
         if (data.audio_base64) playAudio(data.audio_base64)
         break
       case 'error':
-        setStatus(`Error: ${data.message}`)
+        setStatus('Live')
         setStep('')
+        showToast(data.message || 'An error occurred')
         break
       default:
         break
@@ -221,13 +258,14 @@ export default function LiveConsultation() {
           </div>
 
           <button
-            onClick={() => setMicMuted(!micMuted)}
+            onClick={toggleMic}
+            disabled={vad.loading}
             className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${
-              micMuted ? 'bg-error/10 text-error' : 'bg-secondary/10 text-secondary'
+              micActive ? 'bg-tertiary/10 text-tertiary' : 'bg-surface-container-high text-outline'
             }`}
           >
-            <span className="material-symbols-outlined text-[16px]">{micMuted ? 'mic_off' : 'mic'}</span>
-            {micMuted ? 'Muted' : 'Live'}
+            <span className="material-symbols-outlined text-[16px]">{micActive ? 'mic' : 'mic_off'}</span>
+            {vad.loading ? '...' : micActive ? (vadStatus === 'speaking' ? 'Speaking...' : 'Listening') : 'Mic Off'}
           </button>
 
           <button
@@ -272,6 +310,46 @@ export default function LiveConsultation() {
         </section>
 
         <InsightsSidebar messages={messages} />
+      </div>
+
+      {/* Doctor controls */}
+      <div className="space-y-2 border-t border-outline-variant/30 bg-surface-container px-6 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-secondary">Doctor says:</span>
+          {[
+            "Your blood pressure is 150 over 95, which is high. We need to start you on medication.",
+            "I'm going to order a complete blood count and a metabolic panel.",
+            "You have acute bronchitis. I'm prescribing an inhaler and antibiotics for 7 days.",
+            "The X-ray shows no fracture. Rest, ice, and ibuprofen.",
+            "Do you have any allergies to medications?",
+            "When did the symptoms start?",
+          ].map((phrase, i) => (
+            <button
+              key={i}
+              onClick={() => sendPreset(phrase)}
+              className="rounded-lg bg-secondary/10 px-3 py-1.5 text-xs text-secondary transition hover:bg-secondary/20"
+            >
+              {phrase.length > 50 ? phrase.slice(0, 50) + '...' : phrase}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="text"
+            value={doctorText}
+            onChange={(e) => setDoctorText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendDocText()}
+            placeholder="Doctor: type a message..."
+            className="flex-1 rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-4 py-2 text-sm text-on-surface placeholder:text-outline/50"
+          />
+          <button
+            onClick={sendDocText}
+            disabled={!doctorText.trim()}
+            className="rounded-lg bg-secondary px-4 py-2 text-sm font-bold text-on-secondary transition hover:bg-secondary/80 disabled:opacity-30"
+          >
+            Send
+          </button>
+        </div>
       </div>
     </main>
   )
