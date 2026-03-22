@@ -207,6 +207,68 @@ Respond ONLY with valid JSON:
 
 
 # ---------------------------------------------------------------------------
+# AI Doctor — auto-responds to patient messages
+# ---------------------------------------------------------------------------
+
+AI_DOCTOR_PROMPT = """You are a compassionate, experienced general practitioner conducting a medical interview with a patient through an interpreter. You speak only English.
+
+RULES:
+- Ask ONE follow-up question at a time. Keep responses under 2 sentences.
+- Start by acknowledging what the patient said, then ask a relevant follow-up.
+- Follow standard medical interview flow: chief complaint → onset/duration → severity → associated symptoms → medications/allergies → history.
+- Never diagnose. You are gathering information.
+- Be warm and reassuring. The patient is scared and doesn't speak your language.
+- If the patient mentions pain, ask about location, severity (1-10), and duration.
+- If the patient mentions allergies, confirm and ask about reactions.
+- Keep it natural and conversational — you're a real doctor, not a chatbot."""
+
+
+async def generate_doctor_response(conversation_history: list) -> str:
+    """
+    AI Doctor generates a response based on conversation history.
+
+    Args:
+        conversation_history: list of {"role": "patient"|"doctor", "text": str}
+
+    Returns:
+        Doctor's response in English.
+    """
+    if not OPENROUTER_API_KEY:
+        return "Can you tell me more about your symptoms?"
+
+    messages = [{"role": "system", "content": AI_DOCTOR_PROMPT}]
+    for msg in conversation_history[-10:]:  # last 10 messages for context
+        if msg["role"] == "patient":
+            messages.append({"role": "user", "content": f"[Patient says]: {msg['text']}"})
+        else:
+            messages.append({"role": "assistant", "content": msg["text"]})
+
+    if not any(m["role"] == "user" for m in messages):
+        return "Hello, how can I help you today?"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                OPENROUTER_URL,
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": MODEL,
+                    "messages": messages,
+                    "temperature": 0.3,
+                    "max_tokens": 150,
+                },
+            )
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        logger.error(f"AI Doctor error: {e}")
+        return "Can you tell me more about that?"
+
+
+# ---------------------------------------------------------------------------
 # Session summary — called when session ends
 # ---------------------------------------------------------------------------
 

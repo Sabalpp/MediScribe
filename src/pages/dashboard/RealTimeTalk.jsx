@@ -29,6 +29,7 @@ export default function RealTimeTalk() {
   const [micRole, setMicRole] = useState(null) // 'patient' | 'doctor' | null
   const [vadStatus, setVadStatus] = useState('idle') // idle | listening | speaking | error
   const [pttHeld, setPttHeld] = useState(false)
+  const [aiDoctorOn, setAiDoctorOn] = useState(false)
 
   const wsRef = useRef(null)
   const langRef = useRef(lang)
@@ -49,14 +50,15 @@ export default function RealTimeTalk() {
   }, [])
 
   // --- Send audio blob over WebSocket ---
-  const sendAudio = useCallback((blob) => {
+  const sendAudio = useCallback(async (blob) => {
     const ws = wsRef.current
     const role = micRoleRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN || !role) return
 
     const direction = role === 'patient' ? 'patient_to_provider' : 'provider_to_patient'
     ws.send(JSON.stringify({ type: 'audio_metadata', direction, patient_language: langRef.current }))
-    ws.send(blob)
+    const buf = await blob.arrayBuffer()
+    ws.send(buf)
   }, [])
 
   // --- VAD hook (Silero, 800ms silence timeout) ---
@@ -106,6 +108,8 @@ export default function RealTimeTalk() {
             audio: d.audio_base64,
             suggestions: d.follow_up_suggestions,
           })
+        } else if (d.type === 'ai_doctor_status') {
+          setAiDoctorOn(d.enabled)
         } else if (d.type === 'error') {
           setStatus('Ready'); setStep('')
           showToast(d.message || 'An error occurred')
@@ -164,7 +168,7 @@ export default function RealTimeTalk() {
       const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
       pttChunksRef.current = []
       recorder.ondataavailable = (e) => { if (e.data.size > 0) pttChunksRef.current.push(e.data) }
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const blob = new Blob(pttChunksRef.current, { type: 'audio/webm' })
         stream.getTracks().forEach((t) => t.stop())
         if (blob.size > 1000) {
@@ -172,7 +176,8 @@ export default function RealTimeTalk() {
           if (ws?.readyState === WebSocket.OPEN) {
             const direction = role === 'patient' ? 'patient_to_provider' : 'provider_to_patient'
             ws.send(JSON.stringify({ type: 'audio_metadata', direction, patient_language: langRef.current }))
-            ws.send(blob)
+            const buf = await blob.arrayBuffer()
+            ws.send(buf)
           }
         }
       }
@@ -192,6 +197,14 @@ export default function RealTimeTalk() {
     pttRecorderRef.current = null
     setPttHeld(false)
   }, [])
+
+  const toggleAiDoctor = useCallback(() => {
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    const next = !aiDoctorOn
+    ws.send(JSON.stringify({ type: 'toggle_ai_doctor', enabled: next }))
+    setAiDoctorOn(next)
+  }, [aiDoctorOn])
 
   const sendDoctorText = useCallback(() => {
     const text = doctorText.trim()
@@ -234,6 +247,16 @@ export default function RealTimeTalk() {
               <option key={l.code} value={l.code}>{l.label}</option>
             ))}
           </select>
+          {connected && (
+            <button
+              onClick={toggleAiDoctor}
+              className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
+                aiDoctorOn ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              AI Doctor {aiDoctorOn ? 'ON' : 'OFF'}
+            </button>
+          )}
           {!connected ? (
             <button onClick={startSession} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white hover:bg-blue-700">
               Start Session

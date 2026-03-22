@@ -34,6 +34,7 @@ export default function LiveConsultation() {
   const [vadStatus, setVadStatus] = useState('idle')
   const [doctorText, setDoctorText] = useState('')
   const [pttHeld, setPttHeld] = useState(false)
+  const [aiDoctorOn, setAiDoctorOn] = useState(false)
 
   const scrollRef = useRef(null)
   const sessionRef = useRef(null)
@@ -112,6 +113,14 @@ export default function LiveConsultation() {
     pttStreamRef.current = null
     setPttHeld(false)
   }, [])
+
+  const toggleAiDoctor = useCallback(() => {
+    const conn = sessionRef.current
+    if (!conn?.ws || conn.ws.readyState !== WebSocket.OPEN) return
+    const next = !aiDoctorOn
+    conn.ws.send(JSON.stringify({ type: 'toggle_ai_doctor', enabled: next }))
+    setAiDoctorOn(next)
+  }, [aiDoctorOn])
 
   const sendPreset = useCallback((text) => {
     if (!text || !sessionRef.current) return
@@ -249,6 +258,9 @@ export default function LiveConsultation() {
         }])
         if (data.audio_base64) playAudio(data.audio_base64)
         break
+      case 'ai_doctor_status':
+        setAiDoctorOn(data.enabled)
+        break
       case 'error':
         setStatus('Live')
         setStep('')
@@ -353,6 +365,16 @@ export default function LiveConsultation() {
           >
             <span className="material-symbols-outlined text-[16px]">record_voice_over</span>
             PTT Doctor
+          </button>
+
+          <button
+            onClick={toggleAiDoctor}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${
+              aiDoctorOn ? 'bg-tertiary text-on-tertiary' : 'bg-surface-container-high text-outline'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">smart_toy</span>
+            AI Doctor {aiDoctorOn ? 'ON' : 'OFF'}
           </button>
 
           <button

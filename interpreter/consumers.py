@@ -24,7 +24,7 @@ import logging
 import asyncio
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-from .gemini_client import process_doctor_to_patient, process_patient_to_doctor
+from .gemini_client import process_doctor_to_patient, process_patient_to_doctor, generate_doctor_response
 from .elevenlabs_client import synthesize_speech
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,8 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
         self.session_id = self.scope["url_route"]["kwargs"]["session_id"]
         self._pending_direction = None
         self._pending_language = None
+        self.ai_doctor_enabled = False
+        self._conversation_history = []
 
         # Load actual patient language from the session in DB
         from asgiref.sync import sync_to_async
@@ -90,6 +92,14 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
                 text = payload.get("text", "").strip()
                 if text:
                     await self._handle_doctor_message(text, payload.get("patient_language", self.patient_language))
+
+            elif msg_type == "toggle_ai_doctor":
+                self.ai_doctor_enabled = payload.get("enabled", False)
+                logger.info(f"AI Doctor {'enabled' if self.ai_doctor_enabled else 'disabled'} for session {self.session_id}")
+                await self.send(json.dumps({
+                    "type": "ai_doctor_status",
+                    "enabled": self.ai_doctor_enabled,
+                }))
 
             elif msg_type == "ping":
                 await self.send(json.dumps({"type": "pong"}))
@@ -146,6 +156,23 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
                 "patient_language": patient_language,
             },
         )
+
+        # Track conversation for AI Doctor context
+        self._conversation_history.append({
+            "role": "patient",
+            "text": result.get("fixed_english", original_text),
+        })
+
+        # AI Doctor auto-response
+        if self.ai_doctor_enabled:
+            try:
+                await self.send(json.dumps({"type": "processing", "step": "gemini", "message": "AI Doctor is thinking..."}))
+                doctor_response = await generate_doctor_response(self._conversation_history)
+                if doctor_response:
+                    await self._handle_doctor_message(doctor_response, patient_language)
+            except Exception as e:
+                logger.error(f"AI Doctor auto-response error: {e}")
+                await self._send_error(f"AI Doctor failed to respond: {e}")
 
     async def broadcast_patient_message(self, event):
         await self.send(json.dumps({
@@ -213,6 +240,9 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
                 "patient_language": patient_language,
             },
         )
+
+        # Track for AI Doctor conversation context
+        self._conversation_history.append({"role": "doctor", "text": text})
 
     async def broadcast_provider_message(self, event):
         await self.send(json.dumps({
