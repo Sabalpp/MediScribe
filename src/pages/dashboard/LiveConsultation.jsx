@@ -1,496 +1,530 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useDashboardSession } from '../../context/DashboardSessionContext'
 import { useToast } from '../../context/ToastContext'
+import { connectSession, createSession } from '../../services/api'
+import * as callCapture from '../../services/callCapture'
 
-const mockConversation = [
-  {
-    id: 1,
-    source: 'Doctor, me duele mucho el pecho cuando respiro profundo.',
-    translated: 'My chest hurts a lot when I breathe deeply..',
-    sourceTime: '14:02:12',
-    translatedTime: '14:02:13',
-  },
-  {
-    id: 2,
-    source: 'También siento como si mi corazón estuviera saltando latidos. Tengo miedo de que sea algo grave.',
-    translated: "I also feel as if my heart were skipping beats. I'm afraid it might be something serious.",
-    sourceTime: '14:02:45',
-    translatedTime: '14:02:46',
-  },
-  {
-    id: 3,
-    source: 'A veces me mareo cuando me levanto rápido y veo pequeñas luces.',
-    translated: 'Sometimes I feel dizzy when I stand up quickly and I see small lights.',
-    sourceTime: '14:03:18',
-    translatedTime: '14:03:19',
-  },
-  {
-    id: 4,
-    source: 'Mi madre tuvo problemas del corazón. Ella falleció de un infarto a los cincuenta y dos años.',
-    translated: 'My mother had heart problems. She passed away from a heart attack at fifty-two years old.',
-    sourceTime: '14:03:55',
-    translatedTime: '14:03:56',
-  },
+const LANGUAGES = [
+  { code: 'es', label: 'Spanish' },
+  { code: 'hi', label: 'Hindi' },
+  { code: 'ne', label: 'Nepali' },
+  { code: 'zh', label: 'Mandarin' },
+  { code: 'vi', label: 'Vietnamese' },
+  { code: 'fr', label: 'French' },
+  { code: 'pt', label: 'Portuguese' },
+  { code: 'ar', label: 'Arabic' },
 ]
-
-const medicalTerms = ['Pleurisy', 'Palpitaciones', 'Dyspnea', 'Myocarditis Risk', 'Syncope', 'Photopsia']
-
-const FIRST_REVEAL_MS = 2500
-const FOLLOW_UP_MS = 2500
-
-const ENGLISH_READY_LABEL =
-  'ENGLISH: MY CHEST HURTS A LOT WHEN I BREATHE DEEPLY...'
-
-const CLINIC_LANG_OPTIONS = ['English (US)', 'English (UK)', 'French (FR)']
-const YOUR_LANG_OPTIONS = ['Spanish (MX)', 'Spanish (ES)', 'French (CA)', 'Mandarin (CN)']
 
 export default function LiveConsultation() {
   const { inCall, startCall, endCall } = useDashboardSession()
   const { showToast } = useToast()
 
+  const [role, setRole] = useState(null) // 'patient' | 'doctor'
+  const [mode, setMode] = useState(null) // 'create' | 'join'
+  const [sessionId, setSessionId] = useState('')
+  const [joinCode, setJoinCode] = useState('')
+  const [patientLang, setPatientLang] = useState('es')
   const [messages, setMessages] = useState([])
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [clinicLang, setClinicLang] = useState('English (US)')
-  const [yourLang, setYourLang] = useState('Spanish (MX)')
+  const [status, setStatus] = useState('')
+  const [step, setStep] = useState('')
+  const [micMuted, setMicMuted] = useState(false)
 
   const scrollRef = useRef(null)
-  const englishBarRef = useRef(null)
+  const sessionRef = useRef(null)
+  const audioRef = useRef(null)
 
   useEffect(() => {
-    if (!inCall) {
-      setMessages([])
-      setIsStreaming(false)
-      return
-    }
-
-    let cancelled = false
-    let intervalId = null
-    let timeoutId = null
-    let raf1 = 0
-    let raf2 = 0
-
-    setIsStreaming(true)
-
-    const startStream = () => {
-      if (cancelled) return
-
-      if (intervalId != null) {
-        clearInterval(intervalId)
-        intervalId = null
-      }
-
-      const first = mockConversation[0]
-      if (!first) return
-
-      setMessages([first])
-      let idx = 1
-      intervalId = setInterval(() => {
-        if (cancelled) {
-          if (intervalId != null) clearInterval(intervalId)
-          intervalId = null
-          return
-        }
-        if (idx < mockConversation.length) {
-          const next = mockConversation[idx]
-          idx++
-          if (next) {
-            setMessages((prev) => [...prev, next])
-          }
-        } else {
-          if (intervalId != null) clearInterval(intervalId)
-          intervalId = null
-          setIsStreaming(false)
-        }
-      }, FOLLOW_UP_MS)
-    }
-
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        if (!englishBarRef.current) return
-        timeoutId = setTimeout(() => {
-          if (cancelled) return
-          startStream()
-        }, FIRST_REVEAL_MS)
-      })
-    })
-
-    return () => {
-      cancelled = true
-      cancelAnimationFrame(raf1)
-      cancelAnimationFrame(raf2)
-      if (timeoutId != null) clearTimeout(timeoutId)
-      if (intervalId != null) clearInterval(intervalId)
-    }
-  }, [inCall])
-
-  useEffect(() => {
-    if (messages.length === 0) return
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages])
 
-  const handleEndSession = () => {
-    endCall()
-    window.electronAPI?.toggleOverlay(false)
-    window.electronAPI?.endSession()
-    showToast('Visit ended.')
-  }
+  useEffect(() => { callCapture.setMicMuted(micMuted) }, [micMuted])
 
-  const handleJoinVisit = () => {
+  // --- Create session (first client) ---
+  const handleCreate = useCallback(async () => {
+    try {
+      setStatus('Creating session...')
+      const session = await createSession({ providerId: 'doctor_1', patientLanguage: patientLang })
+      const id = session.id
+      setSessionId(id)
+      setMode('create')
+      showToast('Session created — share the code with the other person.')
+      connectToSession(id)
+    } catch (err) {
+      showToast(`Failed to create session: ${err.message}`)
+      setStatus('')
+    }
+  }, [patientLang, role])
+
+  // --- Join session (second client) ---
+  const handleJoin = useCallback(() => {
+    const id = joinCode.trim()
+    if (!id) {
+      showToast('Enter a session code.')
+      return
+    }
+    setSessionId(id)
+    setMode('join')
+    connectToSession(id)
+  }, [joinCode, role, patientLang])
+
+  // --- Connect WebSocket + start mic ---
+  function connectToSession(id) {
     startCall()
-    window.electronAPI?.toggleOverlay(true)
-    window.electronAPI?.startSession()
-    showToast('Visit started — live translation is running (demo).')
+    setMessages([])
+    setStatus('Connecting...')
+
+    const conn = connectSession({
+      sessionId: id,
+      onOpen: () => {
+        setStatus('Starting mic capture...')
+        callCapture.startMicOnly({
+          ws: conn.ws,
+          language: patientLang,
+          role,
+        }).then(() => {
+          setStatus('Live — listening to your microphone')
+          showToast(`Connected as ${role}. Speak naturally — MediScribe is translating.`)
+          window.electronAPI?.startSession()
+        }).catch((err) => {
+          setStatus('Mic access denied')
+          showToast(`Microphone error: ${err.message}`)
+        })
+      },
+      onMessage: handleWsMessage,
+      onClose: () => {
+        setStatus('Disconnected')
+        callCapture.stopAll()
+      },
+      onError: () => setStatus('Connection error'),
+    })
+
+    sessionRef.current = conn
+
+    if (!conn.ws) {
+      setStatus('Demo mode — mock messages')
+    }
   }
 
+  const handleStop = () => {
+    callCapture.stopAll()
+    sessionRef.current?.close()
+    sessionRef.current = null
+    endCall()
+    window.electronAPI?.endSession()
+    setStatus('')
+    setStep('')
+    setSessionId('')
+    setMode(null)
+    showToast('Session ended.')
+  }
+
+  function handleWsMessage(data) {
+    switch (data.type) {
+      case 'connection_established':
+        setStatus('Live — speak naturally')
+        setStep('')
+        break
+      case 'processing':
+        setStatus(data.message || 'Processing...')
+        setStep(data.step || '')
+        break
+      case 'patient_message':
+        setStatus('Live')
+        setStep('')
+        setMessages((prev) => [...prev, {
+          role: 'patient',
+          original: data.original,
+          rawEnglish: data.raw_english,
+          fixedEnglish: data.fixed_english,
+          flags: data.medical_flags,
+          ts: new Date().toLocaleTimeString(),
+        }])
+        break
+      case 'provider_message':
+        setStatus('Live')
+        setStep('')
+        setMessages((prev) => [...prev, {
+          role: 'doctor',
+          original: data.original,
+          simplified: data.simplified,
+          translated: data.translated,
+          audio: data.audio_base64,
+          suggestions: data.follow_up_suggestions,
+          ts: new Date().toLocaleTimeString(),
+        }])
+        if (data.audio_base64) playAudio(data.audio_base64)
+        break
+      case 'error':
+        setStatus(`Error: ${data.message}`)
+        setStep('')
+        break
+      default:
+        break
+    }
+  }
+
+  function playAudio(base64) {
+    try {
+      const binary = atob(base64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+      const blob = new Blob([bytes], { type: 'audio/mpeg' })
+      const url = URL.createObjectURL(blob)
+      if (!audioRef.current) audioRef.current = new Audio()
+      audioRef.current.src = url
+      audioRef.current.play().catch(() => {})
+    } catch { /* best-effort */ }
+  }
+
+  const stepIcons = { transcribing: '🎧', gemini: '🧠', tts: '🔊' }
+
+  // --- If no role selected yet, show setup screen ---
+  if (!role || !inCall) {
+    return <SetupScreen
+      role={role} setRole={setRole}
+      patientLang={patientLang} setPatientLang={setPatientLang}
+      joinCode={joinCode} setJoinCode={setJoinCode}
+      sessionId={sessionId}
+      status={status}
+      onCreate={handleCreate}
+      onJoin={handleJoin}
+    />
+  }
+
+  // --- Active session ---
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-outline-variant/30 bg-surface-container px-8">
-        <div className="flex items-center gap-6">
-          <h1 className="text-xl font-bold tracking-tight text-primary">Your visit</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-bold tracking-tight text-primary">Live Session</h1>
+          <span className={`flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold ${
+            role === 'doctor'
+              ? 'bg-secondary/10 text-secondary'
+              : 'bg-primary/10 text-primary'
+          }`}>
+            <span className="material-symbols-outlined text-[14px]">{role === 'doctor' ? 'stethoscope' : 'person'}</span>
+            {role === 'doctor' ? 'Doctor' : 'Patient'} · {LANGUAGES.find((l) => l.code === patientLang)?.label}
+          </span>
           <div className="flex items-center rounded-full bg-surface-container-highest px-1 py-1">
-            <div
-              className={`flex items-center gap-2 rounded-full bg-surface-container-lowest px-4 py-1.5 text-xs font-bold text-primary shadow-sm ${
-                inCall ? '' : 'opacity-60'
-              }`}
-            >
-              <span
-                className={`h-2 w-2 rounded-full bg-tertiary-fixed-dim ${inCall ? 'pulse-active' : ''}`}
-              />
-              {inCall ? 'TRANSLATING' : 'STANDBY'}
+            <div className="flex items-center gap-2 rounded-full bg-surface-container-lowest px-4 py-1.5 text-xs font-bold text-primary shadow-sm">
+              <span className="h-2 w-2 rounded-full bg-tertiary-fixed-dim pulse-active" />
+              {step ? `${stepIcons[step] || ''} ${status}` : status || 'LIVE'}
             </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-outline-variant/20 bg-surface-container-lowest px-3 py-1.5">
-            <span className="text-[0.6875rem] font-bold uppercase tracking-wider text-outline">Clinic</span>
-            <select
-              value={clinicLang}
-              onChange={(e) => {
-                setClinicLang(e.target.value)
-                showToast(`Clinic language set to ${e.target.value} (demo).`)
-              }}
-              className="max-w-[140px] cursor-pointer bg-transparent text-sm font-semibold text-on-surface outline-none"
-            >
-              {CLINIC_LANG_OPTIONS.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="material-symbols-outlined text-outline">arrow_forward</span>
-          <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-outline-variant/20 bg-surface-container-lowest px-3 py-1.5">
-            <span className="text-[0.6875rem] font-bold uppercase tracking-wider text-outline">Your language</span>
-            <select
-              value={yourLang}
-              onChange={(e) => {
-                setYourLang(e.target.value)
-                showToast(`Your language set to ${e.target.value} (demo).`)
-              }}
-              className="max-w-[140px] cursor-pointer bg-transparent text-sm font-semibold text-on-surface outline-none"
-            >
-              {YOUR_LANG_OPTIONS.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="mx-2 hidden h-6 w-px bg-outline-variant sm:block" />
+        <div className="flex items-center gap-3">
+          {/* Session code */}
+          <div className="flex items-center gap-2 rounded-lg border border-outline-variant/20 bg-surface-container-lowest px-3 py-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-outline">Session</span>
+            <code className="text-xs font-bold text-on-surface">{sessionId.slice(0, 8)}</code>
+          </div>
+
           <button
-            type="button"
-            onClick={handleEndSession}
-            disabled={!inCall}
-            className="flex items-center gap-2 rounded-lg bg-error px-4 py-2 text-sm font-bold text-white transition-opacity enabled:active:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={() => setMicMuted(!micMuted)}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${
+              micMuted ? 'bg-error/10 text-error' : 'bg-secondary/10 text-secondary'
+            }`}
           >
-            <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-              stop_circle
-            </span>
-            End visit
+            <span className="material-symbols-outlined text-[16px]">{micMuted ? 'mic_off' : 'mic'}</span>
+            {micMuted ? 'Muted' : 'Live'}
+          </button>
+
+          <button
+            onClick={handleStop}
+            className="flex items-center gap-2 rounded-lg bg-error px-4 py-2 text-sm font-bold text-white transition-opacity active:opacity-80"
+          >
+            <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>stop_circle</span>
+            End session
           </button>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <section className="flex min-h-0 flex-1 flex-col bg-surface">
-          <div ref={scrollRef} className="no-scrollbar min-h-0 flex-1 space-y-8 overflow-y-auto p-8">
-            {!inCall && (
-              <div className="flex min-h-[280px] flex-col items-center justify-center rounded-xl border border-dashed border-outline-variant/40 bg-surface-container-low/50 px-6 py-16 text-center">
-                <span className="material-symbols-outlined mb-4 text-5xl text-primary/40">hearing</span>
-                <h2 className="mb-2 text-xl font-bold text-on-surface">Ready when you are</h2>
-                <p className="mb-8 max-w-md text-sm text-on-surface-variant">
-                  Join your visit to start live translation. You&apos;ll see everything your doctor says, translated into
-                  your language in real time.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleJoinVisit}
-                  className="clinical-gradient rounded-lg px-8 py-3 text-base font-bold text-white shadow-sm transition-opacity hover:opacity-95"
-                >
-                  Join your visit
-                </button>
-              </div>
-            )}
-
-            {inCall && (
-              <>
-                <div
-                  ref={englishBarRef}
-                  className="flex w-full items-center gap-3 rounded-md bg-primary px-4 py-3.5 shadow-sm ring-1 ring-secondary/30"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/95" aria-hidden>
-                    <span
-                      className="material-symbols-outlined text-[20px] text-primary"
-                      style={{ fontVariationSettings: "'FILL' 1" }}
-                    >
-                      check
-                    </span>
+          <div ref={scrollRef} className="no-scrollbar min-h-0 flex-1 overflow-y-auto p-8">
+            <div className="mx-auto max-w-3xl space-y-4">
+              {messages.length === 0 && (
+                <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+                  <div className="flex gap-1">
+                    <div className="h-2 w-2 animate-bounce rounded-full bg-primary" />
+                    <div className="h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.3s]" />
+                    <div className="h-2 w-2 animate-bounce rounded-full bg-primary [animation-delay:-0.5s]" />
                   </div>
-                  <p className="text-sm font-bold uppercase tracking-wide text-white">{ENGLISH_READY_LABEL}</p>
+                  <p className="text-sm text-on-surface-variant">Waiting for speech... Start talking on your call.</p>
                 </div>
-
-                <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-                  {/* Left column: What your doctor said (English/translated) */}
-                  <div className="space-y-4">
-                    <div className="mb-6 flex items-center gap-2">
-                      <span className="text-[0.6875rem] font-bold uppercase tracking-widest text-primary">
-                        What your doctor said
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-6">
-                      {messages.map((msg) => (
-                        <div
-                          key={`trans-${msg.id}`}
-                          className="rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-4 shadow-sm"
-                        >
-                          <p className="leading-relaxed text-on-surface">{msg.translated}</p>
-                          <span className="mt-2 block text-[10px] text-outline">{msg.translatedTime}</span>
-                        </div>
-                      ))}
-                      {isStreaming && (
-                        <div className="flex items-center justify-center gap-3 rounded-lg border border-dashed border-outline-variant/30 bg-surface-container-low/50 p-4">
-                          <div className="flex gap-1">
-                            <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-container"></div>
-                            <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-container [animation-delay:-0.3s]"></div>
-                            <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-container [animation-delay:-0.5s]"></div>
-                          </div>
-                          <span className="text-xs font-medium text-outline">Listening...</span>
-                        </div>
-                      )}
-                    </div>
+              )}
+              {messages.map((m, i) => (
+                <TranscriptBubble key={i} msg={m} myRole={role} />
+              ))}
+              {messages.length > 0 && inCall && (
+                <div className="flex items-center justify-center gap-3 rounded-lg border border-dashed border-outline-variant/30 bg-surface-container-low/50 p-3">
+                  <div className="flex gap-1">
+                    <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-container" />
+                    <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-container [animation-delay:-0.3s]" />
+                    <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary-container [animation-delay:-0.5s]" />
                   </div>
-
-                  {/* Right column: In your language (source/patient's language) */}
-                  <div className="space-y-4">
-                    <div className="mb-6 flex items-center gap-2">
-                      <span className="text-[0.6875rem] font-bold uppercase tracking-widest text-secondary">
-                        In your language
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-6">
-                      {messages.map((msg) => (
-                        <div
-                          key={`src-${msg.id}`}
-                          className="rounded-lg border-l-4 border-secondary bg-surface-container-low p-4"
-                        >
-                          <p className="leading-relaxed text-on-surface">{msg.source}</p>
-                          <span className="mt-2 block text-[10px] text-outline">{msg.sourceTime}</span>
-                        </div>
-                      ))}
-                      {isStreaming && (
-                        <div className="rounded-lg border-l-4 border-secondary bg-surface-container-low p-4 opacity-60">
-                          <p className="italic text-on-surface">...traduciendo en tiempo real...</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  <span className="text-xs font-medium text-outline">Listening...</span>
                 </div>
-              </>
-            )}
-          </div>
-
-          <div className="flex h-12 shrink-0 items-center justify-between bg-surface-container-high px-8">
-            <div className="flex gap-4">
-              <button
-                type="button"
-                onClick={() => showToast('Flag submitted — we\'ll review this translation (demo).')}
-                disabled={!inCall}
-                className="text-[0.6875rem] font-bold text-outline transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                TRANSLATION LOOKS WRONG
-              </button>
-              <button
-                type="button"
-                onClick={() => showToast('Note saved (demo).')}
-                disabled={!inCall}
-                className="text-[0.6875rem] font-bold text-outline transition-colors hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                SAVE A NOTE
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${inCall ? 'bg-secondary' : 'bg-outline-variant'}`} />
-              <span className="text-[0.6875rem] font-bold uppercase tracking-widest text-secondary">
-                {inCall ? 'Connection Stable — 42ms Latency' : 'Idle — join your visit to connect'}
-              </span>
+              )}
             </div>
           </div>
         </section>
 
-        <WhatThisMeans messages={messages} medicalTerms={medicalTerms} inCall={inCall} />
+        <InsightsSidebar messages={messages} />
       </div>
     </main>
   )
 }
 
-function WhatThisMeans({ messages, medicalTerms, inCall }) {
-  const { showToast } = useToast()
-  const visibleTerms = medicalTerms.slice(0, Math.min(messages.length * 2, medicalTerms.length))
+// ---------------------------------------------------------------------------
+// Setup screen — role picker + session create/join
+// ---------------------------------------------------------------------------
+
+function SetupScreen({ role, setRole, patientLang, setPatientLang, joinCode, setJoinCode, sessionId, status, onCreate, onJoin }) {
+  return (
+    <main className="flex flex-1 items-center justify-center bg-surface p-8">
+      <div className="w-full max-w-xl space-y-8">
+        <div className="text-center">
+          <h1 className="text-3xl font-black tracking-tight text-primary">Start a session</h1>
+          <p className="mt-2 text-on-surface-variant">
+            Both you and the other person open MediScribe. One creates, the other joins with the code.
+          </p>
+        </div>
+
+        {/* Step 1: Pick role */}
+        <div className="space-y-3">
+          <label className="text-xs font-bold uppercase tracking-wider text-outline">I am the...</label>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => setRole('patient')}
+              className={`flex flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all ${
+                role === 'patient'
+                  ? 'border-primary bg-primary/5 shadow-sm'
+                  : 'border-outline-variant/30 hover:border-primary/40'
+              }`}
+            >
+              <span className="material-symbols-outlined text-4xl text-primary">person</span>
+              <span className="text-lg font-bold text-on-surface">Patient</span>
+              <span className="text-xs text-on-surface-variant">I speak another language</span>
+            </button>
+            <button
+              onClick={() => setRole('doctor')}
+              className={`flex flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all ${
+                role === 'doctor'
+                  ? 'border-secondary bg-secondary/5 shadow-sm'
+                  : 'border-outline-variant/30 hover:border-secondary/40'
+              }`}
+            >
+              <span className="material-symbols-outlined text-4xl text-secondary">stethoscope</span>
+              <span className="text-lg font-bold text-on-surface">Doctor</span>
+              <span className="text-xs text-on-surface-variant">I speak English</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Step 2: Language */}
+        {role && (
+          <div className="space-y-3">
+            <label className="text-xs font-bold uppercase tracking-wider text-outline">Patient language</label>
+            <select
+              value={patientLang}
+              onChange={(e) => setPatientLang(e.target.value)}
+              className="w-full rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-4 py-3 text-sm font-semibold text-on-surface"
+            >
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Step 3: Create or Join */}
+        {role && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-sm">
+              <h3 className="mb-1 text-sm font-bold text-on-surface">Create session</h3>
+              <p className="mb-4 text-xs text-on-surface-variant">Start first, then share the code</p>
+              <button
+                onClick={onCreate}
+                className="clinical-gradient w-full rounded-lg py-3 text-sm font-bold text-white shadow-sm transition-opacity hover:opacity-90"
+              >
+                Create
+              </button>
+              {sessionId && (
+                <div className="mt-4 rounded-lg bg-surface-container-high p-3 text-center">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-outline">Share this code</span>
+                  <div
+                    className="mt-1 cursor-pointer font-mono text-lg font-black tracking-widest text-primary"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(sessionId)
+                    }}
+                    title="Click to copy"
+                  >
+                    {sessionId.slice(0, 8)}
+                  </div>
+                  <span className="text-[10px] text-outline">Full: {sessionId}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-sm">
+              <h3 className="mb-1 text-sm font-bold text-on-surface">Join session</h3>
+              <p className="mb-4 text-xs text-on-surface-variant">Enter the code from the other person</p>
+              <input
+                type="text"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value)}
+                placeholder="Paste session ID..."
+                className="mb-3 w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-4 py-3 text-sm text-on-surface placeholder:text-outline/50"
+                onKeyDown={(e) => e.key === 'Enter' && onJoin()}
+              />
+              <button
+                onClick={onJoin}
+                className="w-full rounded-lg border-2 border-primary bg-primary/5 py-3 text-sm font-bold text-primary transition hover:bg-primary/10"
+              >
+                Join
+              </button>
+            </div>
+          </div>
+        )}
+
+        {status && (
+          <div className="flex items-center justify-center gap-2 text-sm text-on-surface-variant">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            {status}
+          </div>
+        )}
+      </div>
+    </main>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Transcript bubble
+// ---------------------------------------------------------------------------
+
+function TranscriptBubble({ msg, myRole }) {
+  const isPatient = msg.role === 'patient'
+  const isMe = msg.role === myRole
 
   return (
-    <aside className="no-scrollbar w-full max-w-[400px] shrink-0 space-y-6 overflow-y-auto border-l border-outline-variant/30 bg-surface-container-low p-6">
-      <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-on-surface">
-          <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>
-            lightbulb
+    <div className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+      <div className={`max-w-[600px] rounded-2xl px-5 py-3 ${
+        isPatient
+          ? `rounded-bl-sm border border-primary/20 bg-primary/5`
+          : `rounded-br-sm border border-secondary/20 bg-secondary/5`
+      }`}>
+        <div className="mb-1 flex items-center gap-2">
+          <span className="material-symbols-outlined text-[14px]" style={{
+            color: isPatient ? 'var(--color-primary)' : 'var(--color-secondary)',
+          }}>
+            {isPatient ? 'person' : 'stethoscope'}
           </span>
-          What this means for you
-        </h2>
-        <span className="rounded-full bg-primary-container px-2 py-0.5 text-[10px] font-bold text-on-primary-container">
-          AI POWERED
-        </span>
-      </div>
+          <span className={`text-xs font-bold ${isPatient ? 'text-primary' : 'text-secondary'}`}>
+            {isPatient ? 'Patient' : 'Doctor'}{isMe ? ' (you)' : ''}
+          </span>
+          <span className="text-[10px] text-outline">{msg.ts}</span>
+        </div>
 
-      {!inCall && (
-        <p className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 text-xs text-on-surface-variant">
-          Explanations will appear here once your visit starts and your doctor begins speaking.
-        </p>
+        {isPatient ? (
+          <>
+            <p className="text-sm text-on-surface-variant">{msg.original}</p>
+            {msg.rawEnglish && msg.rawEnglish !== msg.fixedEnglish && (
+              <p className="mt-1 text-xs text-outline line-through">{msg.rawEnglish}</p>
+            )}
+            <p className="mt-1 text-sm font-medium text-on-surface">{msg.fixedEnglish}</p>
+            {msg.flags?.symptoms?.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {msg.flags.urgency && (
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                    msg.flags.urgency === 'high' ? 'bg-error/10 text-error'
+                    : msg.flags.urgency === 'medium' ? 'bg-tertiary/10 text-tertiary'
+                    : 'bg-surface-container-high text-outline'
+                  }`}>
+                    {msg.flags.urgency} urgency
+                  </span>
+                )}
+                {msg.flags.symptoms.map((s, i) => (
+                  <span key={i} className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] text-on-surface">{s}</span>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-on-surface-variant">{msg.original}</p>
+            {msg.simplified && msg.simplified !== msg.original && (
+              <p className="mt-1 rounded bg-secondary/10 px-2 py-1 text-xs text-secondary">
+                Simplified: {msg.simplified}
+              </p>
+            )}
+            <p className="mt-1 text-sm font-medium text-on-surface">→ {msg.translated}</p>
+            {msg.audio && (
+              <audio className="mt-2 h-8 w-full" controls src={`data:audio/mpeg;base64,${msg.audio}`} />
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Insights sidebar
+// ---------------------------------------------------------------------------
+
+function InsightsSidebar({ messages }) {
+  const allSymptoms = messages
+    .filter((m) => m.role === 'patient' && m.flags?.symptoms?.length)
+    .flatMap((m) => m.flags.symptoms)
+  const allSuggestions = messages
+    .filter((m) => m.role === 'doctor' && m.suggestions?.length)
+    .flatMap((m) => m.suggestions)
+
+  const symptoms = [...new Set(allSymptoms)].slice(-8)
+  const suggestions = [...new Set(allSuggestions)].slice(-6)
+
+  return (
+    <aside className="no-scrollbar w-full max-w-[320px] shrink-0 space-y-6 overflow-y-auto border-l border-outline-variant/30 bg-surface-container-low p-6">
+      <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-on-surface">
+        <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>lightbulb</span>
+        Insights
+      </h2>
+
+      {symptoms.length > 0 && (
+        <div className="rounded-lg border-l-4 border-error bg-surface-container-lowest p-4 shadow-sm">
+          <span className="text-xs font-bold uppercase text-error">Medical topics</span>
+          <ul className="mt-2 space-y-1.5">
+            {symptoms.map((s, i) => (
+              <li key={i} className="flex items-center gap-2 text-sm text-on-surface">
+                <span className="material-symbols-outlined text-[16px] text-error">info</span>
+                {s}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
-      <div className="rounded-lg border-l-4 border-error bg-surface-container-lowest p-4 shadow-sm">
-        <div className="mb-2 flex items-start justify-between">
-          <span className="text-xs font-bold uppercase text-error">Topics discussed</span>
-          <span className="text-[10px] text-outline">Updated 12s ago</span>
+      {suggestions.length > 0 && (
+        <div className="rounded-lg bg-surface-container-lowest p-4 shadow-sm">
+          <span className="text-xs font-bold uppercase text-primary">Suggested follow-ups</span>
+          <ul className="mt-2 space-y-1.5">
+            {suggestions.map((s, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-on-surface-variant">
+                <span className="material-symbols-outlined text-[16px] text-primary mt-0.5">lightbulb</span>
+                {s}
+              </li>
+            ))}
+          </ul>
         </div>
-        <ul className="space-y-2">
-          <li className="flex items-center gap-2 text-sm text-on-surface">
-            <span className="material-symbols-outlined text-[16px] text-error">info</span>
-            Chest pain when breathing deeply
-          </li>
-          <li className="flex items-center gap-2 text-sm text-on-surface">
-            <span className="material-symbols-outlined text-[16px] text-error">info</span>
-            Heart skipping beats (palpitations)
-          </li>
-          {messages.length >= 3 && (
-            <li className="flex items-center gap-2 text-sm text-on-surface">
-              <span className="material-symbols-outlined text-[16px] text-error">info</span>
-              Dizziness when standing up
-            </li>
-          )}
-        </ul>
-      </div>
+      )}
 
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <span className="text-[0.6875rem] font-bold uppercase tracking-tighter text-outline">Related medical terms</span>
-          <div className="h-px flex-1 bg-outline-variant/30"></div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {visibleTerms.map((term) => (
-            <span
-              key={term}
-              className="rounded-full border border-outline-variant/30 bg-surface-container-highest px-2.5 py-1 text-[11px] font-medium text-on-surface"
-            >
-              {term}
-            </span>
-          ))}
-        </div>
-
-        <div className="space-y-3 rounded-lg bg-surface-container-lowest p-4 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-surface-container-high pb-2">
-            <span className="material-symbols-outlined text-[18px] text-primary">help</span>
-            <span className="text-xs font-bold text-on-surface">You could ask your doctor about...</span>
-          </div>
-          <p className="text-xs leading-relaxed text-on-surface-variant">
-            Based on what was discussed (chest pain when breathing + palpitations), you might want to ask about{' '}
-            <span className="font-bold text-primary">Pericarditis</span> or <span className="font-bold text-primary">Pulmonary Embolism</span> testing.
-          </p>
-          <div className="rounded bg-surface-container-low p-2 font-mono text-[10px] text-on-surface-variant">
-            Source: Mayo Clinic CV Protocol #442-B
-          </div>
-          <button
-            type="button"
-            onClick={() => showToast('Noted — you can ask your doctor about this test (demo).')}
-            disabled={!inCall}
-            className="w-full rounded bg-surface-container-high py-2 text-[10px] font-bold uppercase text-on-surface transition-colors hover:bg-surface-container-highest disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            ASK ABOUT THIS TEST
-          </button>
-        </div>
-      </div>
-
-      <div className="space-y-3">
-        <span className="text-[0.6875rem] font-bold uppercase tracking-tighter text-outline">Your health context</span>
-        <div className="space-y-2 rounded-lg bg-surface-container-high p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-on-surface">Hypertension</span>
-            <span className="text-[10px] font-bold text-secondary">MANAGED</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-on-surface">Family heart history</span>
-            <span className="text-[10px] font-bold text-tertiary">RELEVANT</span>
-          </div>
-          {messages.length >= 4 && (
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-on-surface">Mother — heart attack at age 52</span>
-              <span className="text-[10px] font-bold text-error">IMPORTANT</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="border-t border-outline-variant/20 pt-4">
-        <span className="mb-3 block text-[0.6875rem] font-bold uppercase tracking-tighter text-outline">
-          Live vitals
-        </span>
-        <div className="relative h-24 overflow-hidden rounded-lg bg-surface-container-highest">
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span className="text-[10px] font-bold text-outline-variant">LIVE ECG STREAM</span>
-          </div>
-          <div
-            className="absolute inset-0 opacity-10"
-            style={{
-              backgroundImage: 'radial-gradient(circle, #00478d 1px, transparent 1px)',
-              backgroundSize: '10px 10px',
-            }}
-          ></div>
-          <svg className="absolute bottom-0 h-12 w-full fill-none text-secondary" viewBox="0 0 400 60">
-            <path
-              d="M0,30 L50,30 L60,10 L70,50 L80,30 L150,30 L160,10 L170,50 L180,30 L250,30 L260,10 L270,50 L280,30 L350,30 L360,10 L370,50 L400,30"
-              stroke="currentColor"
-              strokeWidth="2"
-              fill="none"
-            />
-          </svg>
-        </div>
-        <div className="mt-2 flex justify-between">
-          <div className="text-center">
-            <span className="block text-[10px] font-bold uppercase text-outline">BPM</span>
-            <span className="text-lg font-black text-on-surface">88</span>
-          </div>
-          <div className="text-center">
-            <span className="block text-[10px] font-bold uppercase text-outline">SpO2</span>
-            <span className="text-lg font-black text-secondary">98%</span>
-          </div>
-          <div className="text-center">
-            <span className="block text-[10px] font-bold uppercase text-outline">TEMP</span>
-            <span className="text-lg font-black text-on-surface">98.4</span>
-          </div>
-        </div>
-      </div>
+      {symptoms.length === 0 && suggestions.length === 0 && (
+        <p className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest p-3 text-xs text-on-surface-variant">
+          Insights will appear as the conversation progresses.
+        </p>
+      )}
     </aside>
   )
 }

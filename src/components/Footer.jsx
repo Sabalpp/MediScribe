@@ -74,22 +74,22 @@ export default function Footer() {
             </ul>
           </div>
 
-          <div className="rounded-xl border border-white/15 bg-white/[0.08] p-8 md:col-span-4">
-            <h4 className="mb-4 text-lg font-black text-white">Never feel lost at the doctor again</h4>
+          <div className="rounded-xl border border-white/15 bg-white/[0.08] p-8 md:col-span-4 md:sticky md:top-24 md:z-10 md:self-start md:shadow-[0_12px_40px_rgba(0,0,0,0.35)] md:backdrop-blur-sm">
+            <h4 className="mb-4 text-lg font-black text-white">Take control of your health today</h4>
             <p className="mb-6 text-sm font-medium text-white/60">
-              Real-time translation so you can fully understand your care.
+              Don't just listen, when you can truly understand with MediScribe.
             </p>
             <Link
               to="/login"
               className="clinical-gradient mb-4 block w-full rounded-lg py-3 text-center font-bold text-white shadow-sm transition-opacity hover:opacity-90"
             >
-              Get started
+              Launch MediScribe
             </Link>
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-white/40">
               <span className="material-symbols-outlined text-[12px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                 verified_user
               </span>
-              YOUR DATA IS PROTECTED
+              YOUR DATA IS PROTECTED WITH GoDaddy
             </div>
           </div>
         </div>

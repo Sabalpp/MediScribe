@@ -56,13 +56,13 @@ export default function Navbar() {
 
       <div className="flex items-center gap-6">
         <Link to="/login" className="font-medium text-on-surface-variant transition-colors hover:text-primary">
-          Sign in
+          Sign up
         </Link>
         <Link
           to="/login"
           className="clinical-gradient rounded-lg px-5 py-2 font-medium text-white shadow-sm transition-opacity hover:opacity-90"
         >
-          Try it
+          Launch MediScribe
         </Link>
       </div>
     </nav>

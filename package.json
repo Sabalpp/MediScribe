@@ -2,6 +2,10 @@
   "name": "mediscribe",
   "private": true,
   "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sabalpp/MediScribe.git"
+  },
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
@@ -10,12 +14,56 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "electron:dev": "vite & sleep 2 && electron .",
-    "electron:build": "vite build && electron-builder"
+    "electron:build": "vite build && electron-builder",
+    "make:icons": "node electron/create-tray-icon.js"
+  },
+  "build": {
+    "appId": "com.mediscribe.app",
+    "productName": "MediScribe",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "!electron/create-tray-icon.js"
+    ],
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "electron/assets/icon.png",
+      "category": "public.app-category.medical",
+      "entitlements": "electron/entitlements.mac.plist",
+      "entitlementsInherit": "electron/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "MediScribe needs microphone access for live medical translation during your visit.",
+        "NSDesktopFolderUsageDescription": "MediScribe needs access to provide overlay features."
+      }
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "electron/assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "electron/assets/icon.png",
+      "uninstallerIcon": "electron/assets/icon.png"
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "icon": "electron/assets/icon.png",
+      "category": "Utility"
+    },
+    "extraResources": [
+      {
+        "from": "electron/assets/",
+        "to": "assets"
+      }
+    ]
   },
   "dependencies": {
     "@ricky0123/vad-web": "^0.0.30",
     "@tailwindcss/vite": "^4.2.2",
-    "onnxruntime-web": "^1.24.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.13.1",

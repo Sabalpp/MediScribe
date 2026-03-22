@@ -1,8 +1,18 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // --- Overlay ---
   toggleOverlay: (show) => ipcRenderer.send('overlay:toggle', show),
   resizeOverlay: (width, height) => ipcRenderer.send('overlay:resize', { width, height }),
+  setOverlayOpacity: (opacity) => ipcRenderer.send('overlay:set-opacity', opacity),
+
+  onOverlayVisibilityChanged: (callback) => {
+    const handler = (_event, visible) => callback(visible)
+    ipcRenderer.on('overlay:visibility-changed', handler)
+    return () => ipcRenderer.removeListener('overlay:visibility-changed', handler)
+  },
+
+  // --- Session lifecycle ---
   startSession: () => ipcRenderer.send('session:start'),
   endSession: () => ipcRenderer.send('session:end'),
 
@@ -14,4 +24,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('session:ended', callback)
     return () => ipcRenderer.removeListener('session:ended', callback)
   },
+
+  // --- Tray badge ---
+  setTrayBadge: (hasBadge) => ipcRenderer.send('tray:set-badge', hasBadge),
+
+  // --- Permissions ---
+  checkPermissions: () => ipcRenderer.invoke('permissions:check'),
+
+  // --- Platform info ---
+  isElectron: true,
 })

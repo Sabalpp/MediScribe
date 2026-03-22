@@ -19,7 +19,7 @@ export default function LandingPage() {
         <div className="mx-auto flex max-w-7xl flex-col items-center text-center">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-widest text-white/90">
             <BrandMark size="sm" variant="onDark" className="gap-0" />
-            Real-Time Medical Translation
+            Live Medical Translation
           </div>
 
           <h1 className="mb-8 text-5xl font-black leading-[1.1] tracking-tighter text-white md:text-7xl">
@@ -28,8 +28,8 @@ export default function LandingPage() {
           </h1>
 
           <p className="mb-12 max-w-2xl text-lg font-medium text-white/70 md:text-xl">
-            Real-time translation so you never miss what matters during your visit. Every word your doctor says,
-            explained clearly in the language you think in.
+            Real time video and call translation so you never miss a word during your next visit. Every word your doctor says,
+            explained clearly in the language that's clear to you.
           </p>
 
           <div className="flex flex-col gap-4 sm:flex-row">
@@ -37,14 +37,14 @@ export default function LandingPage() {
               to="/login"
               className="clinical-gradient rounded-lg px-10 py-4 text-lg font-bold text-white shadow-sm transition-all duration-200 hover:scale-[0.98]"
             >
-              Get started
+              Launch MediScribe
             </Link>
             <button
               type="button"
               onClick={() => setPrivacyOpen(true)}
               className="rounded-lg border border-white/20 bg-white/10 px-10 py-4 text-lg font-bold text-white transition-all duration-200 hover:bg-white/15"
             >
-              How we protect your privacy
+              Your privacy matters
             </button>
           </div>
         </div>
@@ -97,20 +97,19 @@ export default function LandingPage() {
 
           <div className="md:col-span-5">
             <div className="mb-8 h-1 w-12 bg-primary"></div>
-            <h2 className="mb-6 text-4xl font-black tracking-tight text-primary">What you get.</h2>
+            <h2 className="mb-6 text-4xl font-black tracking-tight text-primary">Expect more.</h2>
             <p className="mb-8 text-lg leading-relaxed text-on-surface-variant">
-              MediScribe doesn&apos;t just translate words — it explains what your doctor means in plain language.
-              Medical jargon is broken down so you can make informed decisions about your own care.
+              MediScribe does more than just translate; it breaks down complex medical language, giving you the control to make informed choices about your health.
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div className="rounded-lg bg-surface-container-low p-4">
-                <div className="text-2xl font-black text-primary">99.4%</div>
+                <div className="text-2xl font-black text-primary">99%</div>
                 <div className="text-xs font-bold uppercase tracking-tighter text-on-surface-variant">
                   Translation Accuracy
                 </div>
               </div>
               <div className="rounded-lg bg-surface-container-low p-4">
-                <div className="text-2xl font-black text-primary">&lt;200ms</div>
+                <div className="text-2xl font-black text-primary">&lt;150ms</div>
                 <div className="text-xs font-bold uppercase tracking-tighter text-on-surface-variant">Latency</div>
               </div>
             </div>
@@ -123,9 +122,9 @@ export default function LandingPage() {
           <h3 className="mb-12 text-xs font-black uppercase tracking-[0.2em] text-outline">Powered by technology you can trust</h3>
           <div className="flex flex-wrap justify-center gap-12 opacity-60 transition-all duration-500 grayscale hover:grayscale-0 md:gap-24">
             {[
-              { name: 'Google Gemini', role: 'Medical AI' },
-              { name: 'ElevenLabs', role: 'Voice & Speech' },
-              { name: 'Snowflake', role: 'Knowledge Base' },
+              { name: 'ElevenLabs', role: 'Records Voice' },
+              { name: 'Google Gemini', role: 'Trascribes Speech' },
+              { name: 'Snowflake', role: 'Checks Transcription' },
             ].map((tech) => (
               <div key={tech.name} className="flex flex-col items-center gap-2">
                 <div className="text-2xl font-black tracking-tighter text-on-surface">{tech.name}</div>

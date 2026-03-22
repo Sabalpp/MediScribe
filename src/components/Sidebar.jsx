@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext'
 import BrandMark from './BrandMark'
 
 const navItems = [
-  { icon: 'dashboard', label: 'My visit', to: '/dashboard', end: true },
+  { icon: 'hearing', label: 'Listen to call', to: '/dashboard', end: true },
   { icon: 'mic', label: 'Real-Time Talk', to: '/dashboard/talk' },
   { icon: 'history', label: 'Past visits', to: '/dashboard/history' },
   { icon: 'person', label: 'My info', to: '/dashboard/patients' },
@@ -18,8 +18,7 @@ export default function Sidebar() {
 
   const handleStartVisit = () => {
     navigate('/dashboard')
-    startCall()
-    showToast('Visit started — live translation active (demo).')
+    showToast('Navigate to Listen to call → click Start listening.')
   }
 
   const handleSupport = () => {
@@ -77,7 +76,7 @@ export default function Sidebar() {
             onClick={handleStartVisit}
             className="clinical-gradient mb-6 w-full rounded-lg py-2.5 text-sm font-semibold text-white shadow-sm transition-transform duration-200 active:scale-[0.98]"
           >
-            Start visit
+            Start listening
           </button>
         </div>
 
