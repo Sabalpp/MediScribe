@@ -43,6 +43,7 @@ export default function LiveConsultation() {
   const pttRecorderRef = useRef(null)
   const pttStreamRef = useRef(null)
   const pttChunksRef = useRef([])
+  const processingTimerRef = useRef(null)
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -97,6 +98,7 @@ export default function LiveConsultation() {
       roleRef.current = pttRole
       setPttHeld(true)
     } catch (err) {
+      pttStreamRef.current?.getTracks().forEach((t) => t.stop())
       showToast(`Mic error: ${err.message}`)
     }
   }, [pttHeld, showToast])
@@ -106,6 +108,8 @@ export default function LiveConsultation() {
       pttRecorderRef.current.stop()
     }
     pttRecorderRef.current = null
+    pttStreamRef.current?.getTracks().forEach((t) => t.stop())
+    pttStreamRef.current = null
     setPttHeld(false)
   }, [])
 
@@ -199,6 +203,10 @@ export default function LiveConsultation() {
   }
 
   function handleWsMessage(data) {
+    // Clear any processing timeout when we get a real result
+    if (data.type !== 'processing') {
+      clearTimeout(processingTimerRef.current)
+    }
     switch (data.type) {
       case 'connection_established':
         setStatus('Live — speak naturally')
@@ -207,6 +215,13 @@ export default function LiveConsultation() {
       case 'processing':
         setStatus(data.message || 'Processing...')
         setStep(data.step || '')
+        // Auto-reset if stuck for 30s
+        clearTimeout(processingTimerRef.current)
+        processingTimerRef.current = setTimeout(() => {
+          setStatus('Live')
+          setStep('')
+          showToast('Processing timed out — try again.')
+        }, 30000)
         break
       case 'patient_message':
         setStatus('Live')

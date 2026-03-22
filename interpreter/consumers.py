@@ -41,14 +41,22 @@ class InterpreterConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         self.session_id = self.scope["url_route"]["kwargs"]["session_id"]
-        self.patient_language = "es"
         self._pending_direction = None
         self._pending_language = None
+
+        # Load actual patient language from the session in DB
+        from asgiref.sync import sync_to_async
+        from .models import Session
+        try:
+            session = await sync_to_async(Session.objects.get)(id=self.session_id)
+            self.patient_language = session.patient_language or "es"
+        except Session.DoesNotExist:
+            self.patient_language = "es"
 
         self.group_name = f"session_{self.session_id}"
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
-        logger.info(f"WebSocket connected: session={self.session_id}")
+        logger.info(f"WebSocket connected: session={self.session_id}, lang={self.patient_language}")
 
         await self.send(json.dumps({
             "type": "connection_established",

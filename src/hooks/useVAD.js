@@ -25,6 +25,7 @@ export default function useVAD({ onSpeechEnd, onStatusChange }) {
       return
     }
 
+    if (loading) return // prevent double init
     setLoading(true)
     try {
       const { MicVAD, utils } = await import('@ricky0123/vad-web')
