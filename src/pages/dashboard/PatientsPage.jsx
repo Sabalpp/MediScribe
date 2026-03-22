@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { useToast } from '../../context/ToastContext'
 
 const INITIAL = {
-  firstName: 'Maria',
-  lastName: 'Garcia',
-  dob: '1978-06-15',
+  firstName: 'Hung',
+  lastName: 'Nguyen',
+  dob: '2002-01-01',
   phone: '(555) 867-5309',
-  email: 'maria.garcia@email.com',
-  preferredLanguage: 'es',
+  email: 'hung.nguyen@email.com',
+  preferredLanguage: 'vi',
   allergies: 'Penicillin',
   medications: 'Lisinopril 10mg daily',
   conditions: 'Hypertension (managed)',

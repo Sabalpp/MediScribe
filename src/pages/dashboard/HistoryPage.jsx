@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useToast } from '../../context/ToastContext'
+import { getApiBaseUrl } from '../../lib/devApiBase.js'
 
-const API = import.meta.env.VITE_API_BASE_URL || (
-  window.location.hostname === 'localhost' ? 'http://localhost:8000' : ''
-)
+const API = getApiBaseUrl()
 
 export default function HistoryPage() {
   const { showToast } = useToast()

@@ -45,7 +45,7 @@ export default function Sidebar() {
             <span className="material-symbols-outlined text-[20px]">person</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-bold text-on-surface">Maria G.</span>
+            <span className="text-sm font-bold text-on-surface">Hung N.</span>
             <span className="text-xs text-outline">Patient</span>
           </div>
         </div>

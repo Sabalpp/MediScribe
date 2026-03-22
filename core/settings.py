@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-import dj_database_url
 
 load_dotenv()
 
@@ -75,6 +74,8 @@ ASGI_APPLICATION = "core.asgi.application"
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 if DATABASE_URL:
+    import dj_database_url  # lazy: optional for local SQLite-only dev without reinstall
+
     DATABASES = {"default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)}
 else:
     DATABASES = {

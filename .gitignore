@@ -19,9 +19,6 @@ db.sqlite3-journal
 staticfiles/
 media/
 
-# Docker
-.dockerignore
-
 # Node
 node_modules/
 dist-ssr/

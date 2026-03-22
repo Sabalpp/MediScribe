@@ -74,11 +74,13 @@ npm install
 npm run dev
 ```
 
-Frontend runs at **http://localhost:5173**
+Frontend runs at **http://localhost:5173** (use the exact URL Vite prints if the port changes).
 
 ### That's it.
 
 Open **http://localhost:5173** in Chrome.
+
+**Before hacking:** run `pip install -r requirements.txt` whenever `requirements.txt` changes (otherwise Django may crash on import). Vite **proxies** `/api` and `/ws` to `http://127.0.0.1:8000`, so the UI talks to Django on the **same origin** as the dev server — no manual CORS dance. If port `5173` is busy, kill old `vite` processes or you’ll get a random port **without** noticing.
 
 ---
 
